@@ -122,6 +122,7 @@ flowchart LR
 | Reliability | SQL-backed outbox, leases, retries, exponential backoff, scheduled jobs |
 | Security | API keys, tenant resolution, rate limits, encrypted session keys, SSRF protection |
 | Integrations | OpenAI, Typebot, Chatwoot, RabbitMQ, Amazon SQS, NATS |
+| Dashboard | MudBlazor WebAssembly UI for instances, QR pairing, messages, resources, and API settings |
 
 ## Repository layout
 
@@ -131,10 +132,10 @@ EvolutionAPI/
 │   ├── EvolutionApi.Domain/          Entities, enums, exceptions, interfaces
 │   ├── EvolutionApi.Application/     CQRS handlers, validation, DTOs, mappings
 │   ├── EvolutionApi.Infrastructure/  EF Core, Baileys engine, queues, webhooks
-│   └── EvolutionApi.API/             REST, middleware, hubs, WebSockets, OpenAPI
+│   ├── EvolutionApi.API/             REST, middleware, hubs, WebSockets, OpenAPI
+│   └── EvolutionApi.Dashboard/       Blazor WebAssembly operator dashboard
 ├── tests/
 │   └── EvolutionApi.Tests/           xUnit unit-test layer
-├── reference/                        Upstream/reference material
 ├── Dockerfile
 ├── docker-compose.production.template.yml
 ├── .env.production.template
@@ -142,7 +143,7 @@ EvolutionAPI/
 └── EvolutionApi.DotNet.sln
 ```
 
-The tests are a separate layer. Production projects never depend on the test project.
+The dashboard and tests are separate layers. Production projects never depend on the test project.
 
 ## Requirements
 
@@ -162,6 +163,7 @@ dotnet ef database update `
   --project src/EvolutionApi.Infrastructure `
   --startup-project src/EvolutionApi.API
 dotnet run --project src/EvolutionApi.API
+dotnet run --project src/EvolutionApi.Dashboard
 ```
 
 Development endpoints:
@@ -174,6 +176,24 @@ Development endpoints:
 | Readiness | `http://localhost:5051/health/ready` |
 | SignalR | `http://localhost:5051/hubs/events` |
 | WebSocket | `ws://localhost:5051/ws/{instanceName}` |
+| Dashboard | `http://localhost:5160` |
+
+The dashboard is a standalone WebAssembly app. Set `ApiBaseUrl` in `src/EvolutionApi.Dashboard/wwwroot/appsettings.json` for the API origin, and configure the API `Dashboard:AllowedOrigins` section for the dashboard origin.
+
+### Dashboard modules
+
+```mermaid
+flowchart LR
+    Overview[Overview\nhealth + metrics] --> Instances[Instances\ncreate + QR + lifecycle]
+    Instances --> Messages[Message console\ntext delivery]
+    Overview --> Resources[Resources\nScalar + OpenAPI + health]
+    Overview --> Settings[Settings\nAPI key + security]
+    Instances --> Client[Typed EvolutionApiClient]
+    Messages --> Client
+    Client --> Gateway[Evolution API]
+```
+
+The dashboard keeps the API key in the current browser session and sends it through the `apikey` header. It never places credentials in URLs.
 
 ## Configuration
 

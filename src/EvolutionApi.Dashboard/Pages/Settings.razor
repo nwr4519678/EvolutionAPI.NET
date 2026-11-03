@@ -1,0 +1,9 @@
+@page "/settings"
+@inject DashboardState State
+@inject ISnackbar Snackbar
+
+<PageTitle>Settings · Evolution Control</PageTitle>
+<div class="page-heading"><div><MudText Typo="Typo.h4">Dashboard settings</MudText><MudText Class="muted-text">Connect this WebAssembly dashboard to your gateway.</MudText></div></div>
+<MudGrid Spacing="3"><MudItem xs="12" md="7"><MudPaper Class="panel-card" Elevation="0"><MudText Typo="Typo.h6">Gateway access</MudText><MudText Typo="Typo.body2" Class="muted-text mt-1">The key is held in the current browser session only. Use HTTPS in production.</MudText><MudTextField @bind-Value="_apiKey" Label="Global API key" InputType="InputType.Password" Variant="Variant.Outlined" Class="mt-4" /><MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" OnClick="Save">Save connection</MudButton></MudPaper></MudItem><MudItem xs="12" md="5"><MudPaper Class="panel-card" Elevation="0"><MudText Typo="Typo.h6">Security notes</MudText><MudList T="string" Dense="true"><MudListItem T="string" Icon="@Icons.Material.Filled.Security">Never share the global key or put it in a URL.</MudListItem><MudListItem T="string" Icon="@Icons.Material.Filled.Cloud">Keep the dashboard behind the same TLS boundary as the API.</MudListItem><MudListItem T="string" Icon="@Icons.Material.Filled.AdminPanelSettings">Use instance keys for operational messaging.</MudListItem></MudList></MudPaper></MudItem></MudGrid>
+
+@code { private string _apiKey = string.Empty; protected override void OnInitialized() => _apiKey = State.ApiKey; private void Save() { State.SetApiKey(_apiKey); Snackbar.Add("Gateway key saved for this session", Severity.Success); } }

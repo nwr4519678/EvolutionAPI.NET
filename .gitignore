@@ -2,6 +2,7 @@
 **/obj/
 **/TestResults/
 artifacts/
+reference/
 .vs/
 *.user
 *.suo

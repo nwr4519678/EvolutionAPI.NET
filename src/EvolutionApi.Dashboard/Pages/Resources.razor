@@ -1,0 +1,12 @@
+@page "/resources"
+
+<PageTitle>Resources · Evolution Control</PageTitle>
+<div class="page-heading"><div><MudText Typo="Typo.h4">Resources</MudText><MudText Class="muted-text">Everything you need to operate and integrate the gateway.</MudText></div></div>
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.Api" Title="API documentation" Text="Open Scalar and inspect every route, schema, and request contract." Href="/scalar/v1" /></MudItem>
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.Code" Title="OpenAPI schema" Text="Download the machine-readable OpenAPI document for Postman and clients." Href="/openapi/v1.json" /></MudItem>
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.TaskAlt" Title="Health and readiness" Text="Check liveness, database connectivity, workers, and deployment state." Href="/health/ready" /></MudItem>
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.Work" Title="Hangfire operations" Text="Inspect scheduled jobs, retries, and background processing." Href="/hangfire" /></MudItem>
+</MudGrid>
+
+@code { }

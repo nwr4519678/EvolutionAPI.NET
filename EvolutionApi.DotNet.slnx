@@ -3,5 +3,6 @@
   <Project Path="src/EvolutionApi.Application/EvolutionApi.Application.csproj" />
   <Project Path="src/EvolutionApi.Infrastructure/EvolutionApi.Infrastructure.csproj" />
   <Project Path="src/EvolutionApi.API/EvolutionApi.API.csproj" />
+  <Project Path="src/EvolutionApi.Dashboard/EvolutionApi.Dashboard.csproj" />
   <Project Path="tests/EvolutionApi.Tests/EvolutionApi.Tests.csproj" />
 </Solution>

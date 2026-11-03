@@ -32,14 +32,24 @@ public static class DependencyInjection
     {
         services.AddApplication();          // MediatR, FluentValidation, pipeline behaviors
         services.AddInfrastructure(configuration); // EF Core, caches, WhatsApp engine
-        services.AddApiServices();          // MVC, multi-tenancy, OpenAPI, rate limiting
+        services.AddApiServices(configuration); // MVC, multi-tenancy, OpenAPI, rate limiting
 
         return services;
     }
 
     /// <summary>Registers API-layer–specific services.</summary>
-    public static IServiceCollection AddApiServices(this IServiceCollection services)
+    public static IServiceCollection AddApiServices(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddCors(options => options.AddPolicy("dashboard", policy =>
+        {
+            var origins = configuration.GetSection("Dashboard:AllowedOrigins").Get<string[]>()
+                ?? new[] { "http://localhost:5160", "https://localhost:7292" };
+            policy.WithOrigins(origins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        }));
+
         // ── Multi-Tenancy (Finbuckle) ─────────────────────────────────────────
         services.AddMultiTenant<TenantInfo>()
             .WithHeaderStrategy("X-Tenant-Id")

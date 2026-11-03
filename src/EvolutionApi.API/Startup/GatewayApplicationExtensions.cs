@@ -22,6 +22,7 @@ public static class GatewayApplicationExtensions
             ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
         });
 
+        app.UseCors("dashboard");
         app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
         app.UseApiMultiTenant();
         app.UseRateLimiter();

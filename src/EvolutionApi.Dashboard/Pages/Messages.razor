@@ -1,0 +1,37 @@
+@page "/messages"
+@inject EvolutionApiClient Api
+@inject DashboardState State
+@inject ISnackbar Snackbar
+
+<PageTitle>Send message · Evolution Control</PageTitle>
+<div class="page-heading"><div><MudText Typo="Typo.h4">Message console</MudText><MudText Class="muted-text">Send a controlled text message through a connected session.</MudText></div></div>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="7">
+        <MudPaper Class="panel-card" Elevation="0">
+            <MudText Typo="Typo.h6">Compose message</MudText>
+            <MudSelect T="string" @bind-Value="_instance" Label="Instance" Class="mt-4" Required="true"><MudSelectItem T="string" Value="@string.Empty">Select an instance</MudSelectItem>@foreach (var item in _instances) { <MudSelectItem T="string" Value="@item.Name">@item.Name · @item.ConnectionStatus</MudSelectItem> }</MudSelect>
+            <MudTextField @bind-Value="_number" Label="Recipient number" Placeholder="1234567890" Class="mt-3" Required="true" />
+            <MudTextField @bind-Value="_message" Label="Message" Lines="5" Variant="Variant.Outlined" Class="mt-3" Required="true" />
+            <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Send" Disabled="@_sending" OnClick="Send">@(_sending ? "Sending…" : "Send message")</MudButton>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="panel-card" Elevation="0">
+            <MudText Typo="Typo.h6">Delivery safety</MudText>
+            <MudList T="string" Dense="true"><MudListItem T="string" Icon="@Icons.Material.Filled.Speed">Per-instance throttling is enabled.</MudListItem><MudListItem T="string" Icon="@Icons.Material.Filled.Lock">Messages require an instance API key.</MudListItem><MudListItem T="string" Icon="@Icons.Material.Filled.Storage">Outbound messages are persisted before delivery.</MudListItem></MudList>
+            @if (_result is not null) { <MudAlert Severity="Severity.Success" Class="mt-3">Message accepted by the API.</MudAlert><pre class="result-json">@_result.Value.GetRawText()</pre> }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<DashboardInstance> _instances = [];
+    private string _instance = string.Empty;
+    private string _number = string.Empty;
+    private string _message = string.Empty;
+    private bool _sending;
+    private System.Text.Json.JsonElement? _result;
+    protected override async Task OnInitializedAsync() { if (!State.IsConfigured) return; try { _instances = (await Api.GetInstancesAsync()).ToList(); _instance = State.SelectedInstance ?? _instances.FirstOrDefault()?.Name ?? string.Empty; } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
+    private async Task Send() { if (string.IsNullOrWhiteSpace(_instance) || string.IsNullOrWhiteSpace(_number) || string.IsNullOrWhiteSpace(_message)) { Snackbar.Add("Choose an instance and provide recipient and message", Severity.Warning); return; } _sending = true; try { _result = await Api.SendTextAsync(new SendTextRequest(_number, new TextPayload(_message)), _instance); Snackbar.Add("Message sent", Severity.Success); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _sending = false; } }
+}
