@@ -22,29 +22,15 @@
 
     <MudMainContent Class="dashboard-content">
         <MudContainer MaxWidth="MaxWidth.False" Class="pa-4 pa-md-8">
-            @if (State.IsManagerAuthenticated || IsPublicRoute)
-            {
-                @Body
-            }
-            else
-            {
-                <MudPaper Class="panel-card manager-gate" Elevation="0">
-                    <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Size="Size.Large" Color="Color.Primary" />
-                    <MudText Typo="Typo.h5">Manager sign in required</MudText>
-                    <MudText Class="muted-text">Sign in to manage WhatsApp clients, API keys, QR codes, and resource usage.</MudText>
-                    <MudButton Href="/settings" Color="Color.Primary" Variant="Variant.Filled" Class="mt-3">Open manager sign in</MudButton>
-                </MudPaper>
-            }
+            @Body
         </MudContainer>
     </MudMainContent>
 </MudLayout>
 
 @code {
     [Inject] private DashboardState State { get; set; } = null!;
-    [Inject] private NavigationManager Navigation { get; set; } = null!;
     private bool _drawerOpen = true;
     private bool _darkMode;
-    private bool IsPublicRoute => Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0] is "settings" or "resources";
 
     protected override void OnInitialized() => State.Changed += OnStateChanged;
     private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);

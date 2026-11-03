@@ -10,14 +10,31 @@ public static class ManagerAuthEndpoints
 {
     public static IEndpointRouteBuilder Map(IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/manager/login", (Delegate)new Func<ManagerLoginRequest, HttpContext, IConfiguration, Task<IResult>>(Login))
+        endpoints.MapPost("/manager/login", LoginRequest)
             .AllowAnonymous()
             .RequireRateLimiting("manager-login");
 
-        endpoints.MapPost("/manager/logout", Logout).RequireAuthorization();
-        endpoints.MapGet("/manager/session", GetSession).RequireAuthorization();
+        endpoints.MapPost("/manager/logout", LogoutRequest).RequireAuthorization();
+        endpoints.MapGet("/manager/session", SessionRequest).RequireAuthorization();
         return endpoints;
     }
+
+    private static async Task LoginRequest(HttpContext context)
+    {
+        var request = await context.Request.ReadFromJsonAsync<ManagerLoginRequest>(context.RequestAborted);
+        var configuration = context.RequestServices.GetRequiredService<IConfiguration>();
+        var result = await Login(request ?? new ManagerLoginRequest(string.Empty), context, configuration);
+        await result.ExecuteAsync(context);
+    }
+
+    private static async Task LogoutRequest(HttpContext context)
+    {
+        var result = await Logout(context);
+        await result.ExecuteAsync(context);
+    }
+
+    private static Task SessionRequest(HttpContext context) =>
+        GetSession(context).ExecuteAsync(context);
 
     private static async Task<IResult> Login(ManagerLoginRequest request, HttpContext context, IConfiguration configuration)
     {

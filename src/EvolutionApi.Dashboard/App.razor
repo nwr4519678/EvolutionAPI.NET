@@ -1,31 +1,47 @@
 @inject EvolutionApiClient Api
 @inject DashboardState State
+@implements IDisposable
 
 <MudThemeProvider />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-@if (!_sessionChecked)
-{
-    <div class="startup-screen"><div class="startup-mark">E</div><MudProgressCircular Indeterminate="true" Color="Color.Primary" /><p>Checking manager session…</p></div>
-}
-else
-{
-    <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-        <Found Context="routeData">
-            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-        </Found>
-    </Router>
-}
+<ErrorBoundary>
+    <ChildContent>
+        @if (!_sessionChecked)
+        {
+            <div class="startup-screen"><div class="startup-mark">E</div><MudProgressCircular Indeterminate="true" Color="Color.Primary" /><p>Checking manager session…</p></div>
+        }
+        else if (!State.IsManagerAuthenticated)
+        {
+            <EvolutionApi.Dashboard.Pages.Settings />
+        }
+        else
+        {
+            <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+                <Found Context="routeData">
+                    <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                    <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+                </Found>
+            </Router>
+        }
+    </ChildContent>
+    <ErrorContent Context="exception">
+        <main class="startup-screen"><div class="startup-mark">!</div><MudText Typo="Typo.h5">Dashboard could not start</MudText><MudText Class="muted-text">@exception.Message</MudText><MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/">Reload dashboard</MudButton></main>
+    </ErrorContent>
+</ErrorBoundary>
 
 @code {
     private bool _sessionChecked;
     protected override async Task OnInitializedAsync()
     {
+        State.Changed += OnStateChanged;
         try { State.SetManagerAuthenticated(await Api.CheckManagerSessionAsync()); }
         catch { State.SetManagerAuthenticated(false); }
         _sessionChecked = true;
     }
+
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => State.Changed -= OnStateChanged;
 }
