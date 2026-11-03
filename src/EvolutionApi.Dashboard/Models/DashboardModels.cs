@@ -27,6 +27,8 @@ public sealed record CreateInstanceResponse(string InstanceId, string InstanceNa
 public sealed record SendTextRequest(string Number, TextPayload Text);
 public sealed record TextPayload(string Message);
 public sealed record DashboardHealth(string Status, string? Service = null, DateTime? Timestamp = null);
+public sealed record DashboardUsageSnapshot(DateTime SampledAtUtc, double? ProcessCpuPercent, long ProcessWorkingSetBytes, long DatabaseAllocatedBytes, IReadOnlyList<ClientUsageSnapshot> Clients);
+public sealed record ClientUsageSnapshot(string InstanceId, string ClientId, string? WhatsAppNumber, string ConnectionStatus, long StoredMessages, long SessionRecords, long EstimatedDatabaseBytes);
 
 public sealed record QrCodeResult(string? Code, string? Base64, string State, int? Count);
 

@@ -1,11 +1,31 @@
+@inject EvolutionApiClient Api
+@inject DashboardState State
+
 <MudThemeProvider />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
-    <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-    </Found>
-</Router>
+@if (!_sessionChecked)
+{
+    <div class="startup-screen"><div class="startup-mark">E</div><MudProgressCircular Indeterminate="true" Color="Color.Primary" /><p>Checking manager session…</p></div>
+}
+else
+{
+    <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+    </Router>
+}
+
+@code {
+    private bool _sessionChecked;
+    protected override async Task OnInitializedAsync()
+    {
+        try { State.SetManagerAuthenticated(await Api.CheckManagerSessionAsync()); }
+        catch { State.SetManagerAuthenticated(false); }
+        _sessionChecked = true;
+    }
+}

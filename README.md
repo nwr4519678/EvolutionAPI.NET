@@ -133,7 +133,8 @@ EvolutionAPI/
 │   ├── EvolutionApi.Application/     CQRS handlers, validation, DTOs, mappings
 │   ├── EvolutionApi.Infrastructure/  EF Core, Baileys engine, queues, webhooks
 │   ├── EvolutionApi.API/             REST, middleware, hubs, WebSockets, OpenAPI
-│   └── EvolutionApi.Dashboard/       Blazor WebAssembly operator dashboard
+│   ├── EvolutionApi.Dashboard/       Blazor WebAssembly manager UI
+│   └── EvolutionApi.Dashboard.Server/ secure dashboard host and API proxy
 ├── tests/
 │   └── EvolutionApi.Tests/           xUnit unit-test layer
 ├── Dockerfile
@@ -163,7 +164,7 @@ dotnet ef database update `
   --project src/EvolutionApi.Infrastructure `
   --startup-project src/EvolutionApi.API
 dotnet run --project src/EvolutionApi.API
-dotnet run --project src/EvolutionApi.Dashboard
+dotnet run --project src/EvolutionApi.Dashboard.Server
 ```
 
 Development endpoints:
@@ -178,22 +179,27 @@ Development endpoints:
 | WebSocket | `ws://localhost:5051/ws/{instanceName}` |
 | Dashboard | `http://localhost:5160` |
 
-The dashboard is a standalone WebAssembly app. Set `ApiBaseUrl` in `src/EvolutionApi.Dashboard/wwwroot/appsettings.json` for the API origin, and configure the API `Dashboard:AllowedOrigins` section for the dashboard origin.
+The manager dashboard runs through `EvolutionApi.Dashboard.Server`. It owns the global API key server-side and uses an HTTP-only manager session cookie in the browser. Copy `src/EvolutionApi.Dashboard.Server/appsettings.template.json` to the ignored `appsettings.Development.json`, then set a local manager password and the same API master key used by the gateway.
 
 ### Dashboard modules
 
 ```mermaid
 flowchart LR
-    Overview[Overview\nhealth + metrics] --> Instances[Instances\ncreate + QR + lifecycle]
+    Manager[Manager sign-in\nHTTP-only session] --> Server[Dashboard server\nserver-side master key]
+    Server --> Overview[Overview\nhealth + capacity]
+    Overview --> Instances[Client APIs\nnumber + key + QR]
     Instances --> Messages[Message console\ntext delivery]
+    Overview --> Usage[Usage\nCPU, RAM + database]
     Overview --> Resources[Resources\nScalar + OpenAPI + health]
-    Overview --> Settings[Settings\nAPI key + security]
-    Instances --> Client[Typed EvolutionApiClient]
+    Instances --> Client[Typed dashboard client]
     Messages --> Client
-    Client --> Gateway[Evolution API]
+    Client --> Server
+    Server --> Gateway[Evolution API]
 ```
 
-The dashboard keeps the API key in the current browser session and sends it through the `apikey` header. It never places credentials in URLs.
+The manager enters only a WhatsApp number. The dashboard generates a random instance API key, provisions the client, and displays its QR code. The client receives only their generated instance key. The master API key stays on the dashboard server and is never placed in browser storage, URLs, or client responses.
+
+The Usage page reports API-process CPU and RAM, total SQL Server allocated space, and per-client estimated stored database payload. CPU and RAM cannot be accurately attributed to individual WhatsApp numbers while all clients share one API process. Use isolated workers or containers per client if hard per-client CPU/RAM allocation is required.
 
 ## Configuration
 
@@ -203,6 +209,7 @@ Use environment variables or a secret manager for credentials. Do not commit pro
 ConnectionStrings__DefaultConnection=Server=...;Database=EvolutionApi;...
 Evolution__ApiKey=<global-api-key>
 Evolution__HangfireDashboardApiKey=<different-dashboard-key>
+Dashboard__ManagerPassword=<manager-dashboard-password>
 Evolution__ServerUrl=https://api.example.com
 DataProtection__KeyPath=/var/lib/evolution-api/data-protection-keys
 Media__MaxDownloadBytes=33554432

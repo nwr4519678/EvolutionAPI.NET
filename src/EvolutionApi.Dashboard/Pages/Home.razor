@@ -9,33 +9,25 @@
     <div class="hero-copy">
         <MudText Typo="Typo.overline" Class="eyebrow">EVOLUTION CONTROL CENTER</MudText>
         <MudText Typo="Typo.h3" Class="hero-title">@Greeting, operator.</MudText>
-        <MudText Typo="Typo.body1" Class="muted-text">Your WhatsApp Web sessions, at a glance.</MudText>
+        <MudText Typo="Typo.body1" Class="muted-text">Manage client APIs, connect WhatsApp numbers, and monitor capacity.</MudText>
         <MudText Typo="Typo.caption" Class="muted-text hero-date">@DateTime.Now.ToString("dddd, dd MMMM yyyy")</MudText>
     </div>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Add" Href="/instances">New instance</MudButton>
 </div>
 
-@if (!State.IsConfigured)
-{
-    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-6">
-        Add your gateway API key in <MudLink Href="/settings">Settings</MudLink> to load live instance data.
-    </MudAlert>
-}
-
 <MudGrid Spacing="3" Class="mb-6">
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Total instances" Value="@(_hasLoaded ? _instances.Count.ToString() : "—")" Icon="@Icons.Material.Filled.Devices" Color="Color.Primary" /></MudItem>
+    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Client APIs" Value="@(_hasLoaded ? _instances.Count.ToString() : "—")" Icon="@Icons.Material.Filled.Devices" Color="Color.Primary" /></MudItem>
     <MudItem xs="12" sm="6" md="3"><MetricCard Label="Connected" Value="@(_hasLoaded ? ConnectedCount.ToString() : "—")" Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" /></MudItem>
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Needs attention" Value="@(_hasLoaded ? AttentionCount.ToString() : "—")" Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" /></MudItem>
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="API readiness" Value="@(_health?.Status ?? "—")" Icon="@Icons.Material.Filled.CloudDone" Color="Color.Info" /></MudItem>
+    <MudItem xs="12" sm="6" md="3"><MetricCard Label="API CPU" Value="@(_usage?.ProcessCpuPercent is { } cpu ? $"{cpu:F1}%" : "—")" Icon="@Icons.Material.Filled.Memory" Color="Color.Warning" /></MudItem>
+    <MudItem xs="12" sm="6" md="3"><MetricCard Label="API RAM" Value="@(_usage is not null ? FormatBytes(_usage.ProcessWorkingSetBytes) : "—")" Icon="@Icons.Material.Filled.DeveloperBoard" Color="Color.Info" /></MudItem>
 </MudGrid>
 
 <MudGrid Spacing="3">
     <MudItem xs="12" lg="8">
         <MudPaper Class="panel-card" Elevation="0">
-            <div class="panel-heading"><div><MudText Typo="Typo.h6">Your instances</MudText><MudText Typo="Typo.caption" Class="muted-text">Live connection inventory</MudText></div><MudButton Href="/instances" Variant="Variant.Text" Color="Color.Primary">View all</MudButton></div>
+            <div class="panel-heading"><div><MudText Typo="Typo.h6">Your WhatsApp clients</MudText><MudText Typo="Typo.caption" Class="muted-text">Live connection inventory</MudText></div><MudButton Href="/instances" Variant="Variant.Text" Color="Color.Primary">View all</MudButton></div>
             @if (_loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" /> }
-            else if (!State.IsConfigured) { <EmptyState Icon="@Icons.Material.Filled.Key" Title="Connect your gateway" Message="Add the gateway API key to view your live sessions." ActionText="Open settings" ActionHref="/settings" /> }
-            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No instances yet" Message="Create your first WhatsApp Web instance to get started." ActionText="Create instance" ActionHref="/instances" /> }
+            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No clients yet" Message="Add a WhatsApp number to generate its private API key and QR code." ActionText="Add client number" ActionHref="/instances" /> }
             else
             {
                 <MudTable Items="_instances.Take(5)" Hover="true" Dense="true" Elevation="0">
@@ -50,6 +42,7 @@
             <MudText Typo="Typo.h6">Quick actions</MudText>
             <MudButton Href="/instances" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.QrCode2">Connect with QR</MudButton>
             <MudButton Href="/messages" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Send">Send a message</MudButton>
+            <MudButton Href="/usage" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Analytics">View resource usage</MudButton>
             <MudButton Href="/resources" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Code">Explore API resources</MudButton>
         </MudPaper>
     </MudItem>
@@ -58,6 +51,7 @@
 @code {
     private List<DashboardInstance> _instances = [];
     private DashboardHealth? _health;
+    private DashboardUsageSnapshot? _usage;
     private bool _loading;
     private bool _hasLoaded;
     private string Greeting => DateTime.Now.Hour switch { < 12 => "Good morning", < 18 => "Good afternoon", _ => "Good evening" };
@@ -66,11 +60,19 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (!State.IsConfigured) return;
         _loading = true;
-        try { _instances = (await Api.GetInstancesAsync()).ToList(); _health = await Api.GetHealthAsync(); _hasLoaded = true; }
+        try { _instances = (await Api.GetInstancesAsync()).ToList(); _health = await Api.GetHealthAsync(); _usage = await Api.GetUsageAsync(); _hasLoaded = true; }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
         finally { _loading = false; }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = Math.Max(0, bytes);
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        return $"{value:0.##} {units[unit]}";
     }
 }
 

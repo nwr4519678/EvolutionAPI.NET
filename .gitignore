@@ -8,4 +8,5 @@ reference/
 *.suo
 appsettings.*.json
 !src/EvolutionApi.API/appsettings.json
+!src/EvolutionApi.Dashboard.Server/appsettings.template.json
 /.env.production

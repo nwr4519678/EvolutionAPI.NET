@@ -6,8 +6,8 @@
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" />
         <MudText Typo="Typo.h6" Class="brand-title">Evolution <span>Control</span></MudText>
         <MudSpacer />
-        <MudChip T="string" Size="Size.Small" Color="@(State.IsConfigured ? Color.Success : Color.Warning)" Variant="Variant.Outlined">
-            @(State.IsConfigured ? "API key configured" : "Configure API key")
+        <MudChip T="string" Size="Size.Small" Color="@(State.IsManagerAuthenticated ? Color.Success : Color.Warning)" Variant="Variant.Outlined">
+            @(State.IsManagerAuthenticated ? "Manager signed in" : "Manager sign in")
         </MudChip>
         <MudIconButton Icon="@(_darkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit" aria-label="Toggle dark mode" OnClick="ToggleTheme" />
     </MudAppBar>
@@ -22,15 +22,29 @@
 
     <MudMainContent Class="dashboard-content">
         <MudContainer MaxWidth="MaxWidth.False" Class="pa-4 pa-md-8">
-            @Body
+            @if (State.IsManagerAuthenticated || IsPublicRoute)
+            {
+                @Body
+            }
+            else
+            {
+                <MudPaper Class="panel-card manager-gate" Elevation="0">
+                    <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Size="Size.Large" Color="Color.Primary" />
+                    <MudText Typo="Typo.h5">Manager sign in required</MudText>
+                    <MudText Class="muted-text">Sign in to manage WhatsApp clients, API keys, QR codes, and resource usage.</MudText>
+                    <MudButton Href="/settings" Color="Color.Primary" Variant="Variant.Filled" Class="mt-3">Open manager sign in</MudButton>
+                </MudPaper>
+            }
         </MudContainer>
     </MudMainContent>
 </MudLayout>
 
 @code {
     [Inject] private DashboardState State { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
     private bool _drawerOpen = true;
     private bool _darkMode;
+    private bool IsPublicRoute => Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0] is "settings" or "resources";
 
     protected override void OnInitialized() => State.Changed += OnStateChanged;
     private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);

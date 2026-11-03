@@ -2,6 +2,9 @@
   <Project Path="src/EvolutionApi.Domain/EvolutionApi.Domain.csproj" />
   <Project Path="src/EvolutionApi.Application/EvolutionApi.Application.csproj" />
   <Project Path="src/EvolutionApi.Infrastructure/EvolutionApi.Infrastructure.csproj" />
+  <Folder Name="/src/">
+    <Project Path="src/EvolutionApi.Dashboard.Server/EvolutionApi.Dashboard.Server.csproj" />
+  </Folder>
   <Project Path="src/EvolutionApi.API/EvolutionApi.API.csproj" />
   <Project Path="src/EvolutionApi.Dashboard/EvolutionApi.Dashboard.csproj" />
   <Project Path="tests/EvolutionApi.Tests/EvolutionApi.Tests.csproj" />

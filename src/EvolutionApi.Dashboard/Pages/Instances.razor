@@ -7,16 +7,13 @@
 <PageTitle>Instances · Evolution Control</PageTitle>
 <div class="page-heading"><div><MudText Typo="Typo.h4">Instances</MudText><MudText Class="muted-text">Create, connect, and operate WhatsApp Web sessions.</MudText></div><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">Create instance</MudButton></div>
 
-@if (!State.IsConfigured)
-{
-    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-5">Configure the gateway API key in <MudLink Href="/settings">Settings</MudLink> before managing instances.</MudAlert>
-}
-
 @if (!string.IsNullOrWhiteSpace(_createdKey))
 {
     <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-5" ShowCloseIcon="true" CloseIconClicked="(() => _createdKey = null)">
-        <MudText Typo="Typo.subtitle2">Instance created — save this key now</MudText>
+        <MudText Typo="Typo.subtitle2">Client created for @_createdNumber — copy this API key now</MudText>
+        <MudText Typo="Typo.body2" Class="muted-text">This key is shown only once. Give it to the client to use their WhatsApp API.</MudText>
         <MudText Typo="Typo.body2" Class="key-value">@_createdKey</MudText>
+        <MudText Typo="Typo.caption" Class="muted-text mt-2">Text endpoint: @Api.ApiOrigin.ToString().TrimEnd('/')/message/sendText/@_createdInstanceName</MudText>
     </MudAlert>
 }
 
@@ -33,8 +30,7 @@
     <MudItem xs="12" lg="8">
         <MudPaper Class="panel-card" Elevation="0">
             @if (_loading) { <MudProgressLinear Indeterminate="true" /> }
-            else if (!State.IsConfigured) { <EmptyState Icon="@Icons.Material.Filled.Key" Title="Gateway key required" Message="Add your API key before loading sessions." ActionText="Open settings" ActionHref="/settings" /> }
-            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No WhatsApp sessions" Message="Create an instance, then scan its QR code." ActionText="Create instance" OnAction="OpenCreate" /> }
+            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No WhatsApp clients" Message="Add a WhatsApp number to generate an API key and QR code." ActionText="Add client number" OnAction="OpenCreate" /> }
             else
             {
                 <MudTable Items="_instances" Hover="true" Dense="true" Elevation="0" Filter="new Func<DashboardInstance, bool>(Filter)">
@@ -63,8 +59,9 @@
 {
     <MudPaper Class="create-panel panel-card" Elevation="0">
         <div class="panel-heading"><MudText Typo="Typo.h6">Create WhatsApp instance</MudText><MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseCreate" /></div>
-        <MudGrid Spacing="2"><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.InstanceName" Label="Instance name" Required="true" /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Token" Label="Instance API key" Required="true" InputType="InputType.Password" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Autorenew" OnAdornmentClick="GenerateKey" /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Number" Label="Phone number (optional)" Placeholder="+201..." /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.WebhookUrl" Label="Webhook URL (optional)" /></MudItem></MudGrid>
-        <MudButton Class="mt-4" Color="Color.Primary" Variant="Variant.Filled" OnClick="Create">Create instance</MudButton>
+        <MudText Typo="Typo.body2" Class="muted-text mb-3">Enter the WhatsApp number you want to connect. We’ll create its private API key and request a QR code.</MudText>
+        <MudGrid Spacing="2"><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Number" Label="WhatsApp number" Placeholder="+201001234567" Required="true" InputType="InputType.Telephone" /></MudItem><MudItem xs="12" sm="6"><MudTextField Value="@GeneratedInstanceName" Label="Generated client ID" ReadOnly="true" /></MudItem><MudItem xs="12"><MudTextField @bind-Value="_newInstance.WebhookUrl" Label="Webhook URL (optional)" /></MudItem></MudGrid>
+        <MudButton Class="mt-4" Color="Color.Primary" Variant="Variant.Filled" Disabled="@_creating" StartIcon="@Icons.Material.Filled.QrCode2" OnClick="Create">@(_creating ? "Creating client and QR…" : "Create client and QR code")</MudButton>
     </MudPaper>
 }
 
@@ -79,15 +76,43 @@
     private string _search = string.Empty;
     private CreateInstanceRequest _newInstance = new();
     private string? _createdKey;
+    private string? _createdNumber;
+    private string? _createdInstanceName;
+    private bool _creating;
     private DashboardInstance? _deleteCandidate;
+    private string GeneratedInstanceName => string.IsNullOrWhiteSpace(_newInstance.Number)
+        ? "Generated from number"
+        : "wa-" + new string(_newInstance.Number.Where(char.IsDigit).ToArray());
 
     protected override async Task OnInitializedAsync() { await Load(); if (!string.IsNullOrWhiteSpace(InstanceName)) { var item = _instances.FirstOrDefault(i => i.Name == InstanceName); if (item is not null) await Connect(item); } }
-    private async Task Load() { if (!State.IsConfigured) return; _loading = true; try { _instances = (await Api.GetInstancesAsync()).ToList(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _loading = false; } }
+    private async Task Load() { _loading = true; try { _instances = (await Api.GetInstancesAsync()).ToList(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _loading = false; } }
     private bool Filter(DashboardInstance item) => string.IsNullOrWhiteSpace(_search) || item.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || (item.Number?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false);
     private void OpenCreate() => _createOpen = true;
-    private void GenerateKey() => _newInstance.Token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     private void CloseCreate() { _createOpen = false; _newInstance = new(); }
-    private async Task Create() { if (string.IsNullOrWhiteSpace(_newInstance.InstanceName) || string.IsNullOrWhiteSpace(_newInstance.Token)) { Snackbar.Add("Enter an instance name and API key.", Severity.Warning); return; } if (!State.IsConfigured) { Snackbar.Add("Configure the gateway API key in Settings first.", Severity.Warning); return; } try { var result = await Api.CreateInstanceAsync(_newInstance); _createdKey = result.ApiKey; Snackbar.Add($"Instance {result.InstanceName} created", Severity.Success); CloseCreate(); await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
+    private async Task Create()
+    {
+        var number = new string((_newInstance.Number ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (number.Length is < 7 or > 15) { Snackbar.Add("Enter an international WhatsApp number with 7 to 15 digits.", Severity.Warning); return; }
+        _creating = true;
+        _createdKey = null;
+        try
+        {
+            _newInstance.Number = number;
+            _newInstance.InstanceName = "wa-" + number;
+            _newInstance.Token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var result = await Api.CreateInstanceAsync(_newInstance);
+            _createdKey = result.ApiKey;
+            _createdNumber = "+" + number;
+            _createdInstanceName = result.InstanceName;
+            Snackbar.Add($"Client created for +{number}. Scan the QR code to connect it.", Severity.Success);
+            CloseCreate();
+            await Load();
+            var instance = _instances.FirstOrDefault(item => item.Name == result.InstanceName);
+            if (instance is not null) await Connect(instance);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _creating = false; }
+    }
     private async Task Connect(DashboardInstance instance) { _selected = instance; _qr = null; _connecting = true; State.SelectInstance(instance.Name); try { _qr = await Api.ConnectAsync(instance.Name); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _connecting = false; } }
     private async Task Logout(DashboardInstance instance) { try { await Api.LogoutAsync(instance.Name); Snackbar.Add($"{instance.Name} logged out", Severity.Success); await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
     private void Delete(DashboardInstance instance) => _deleteCandidate = instance;

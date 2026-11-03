@@ -2,14 +2,13 @@ namespace EvolutionApi.Dashboard.Services;
 
 public sealed class DashboardState
 {
-    public string ApiKey { get; private set; } = string.Empty;
+    public bool IsManagerAuthenticated { get; private set; }
     public string? SelectedInstance { get; private set; }
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey);
     public event Action? Changed;
 
-    public void SetApiKey(string value)
+    public void SetManagerAuthenticated(bool value)
     {
-        ApiKey = value.Trim();
+        IsManagerAuthenticated = value;
         Changed?.Invoke();
     }
 

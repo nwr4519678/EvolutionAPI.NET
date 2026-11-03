@@ -1,0 +1,79 @@
+@page "/usage"
+@inject EvolutionApiClient Api
+@inject ISnackbar Snackbar
+
+<PageTitle>Usage · Evolution Control</PageTitle>
+<div class="page-heading">
+    <div><MudText Typo="Typo.h4">Resource usage</MudText><MudText Class="muted-text">Application capacity and storage used by each WhatsApp client.</MudText></div>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" Disabled="@_loading" OnClick="Load">Refresh</MudButton>
+</div>
+
+@if (_usage is null && _loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">@_error</MudAlert>
+}
+else if (_usage is not null)
+{
+    <MudGrid Spacing="3" Class="mb-6">
+        <MudItem xs="12" sm="6" lg="3"><MetricCard Label="API CPU (process total)" Value="@(_usage.ProcessCpuPercent is { } cpu ? $"{cpu:F1}%" : "Sampling…")" Icon="@Icons.Material.Filled.Memory" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" lg="3"><MetricCard Label="API memory" Value="@FormatBytes(_usage.ProcessWorkingSetBytes)" Icon="@Icons.Material.Filled.DeveloperBoard" Color="Color.Info" /></MudItem>
+        <MudItem xs="12" sm="6" lg="3"><MetricCard Label="Database allocated" Value="@FormatBytes(_usage.DatabaseAllocatedBytes)" Icon="@Icons.Material.Filled.Storage" Color="Color.Warning" /></MudItem>
+        <MudItem xs="12" sm="6" lg="3"><MetricCard Label="WhatsApp clients" Value="@_usage.Clients.Count.ToString()" Icon="@Icons.Material.Filled.Devices" Color="Color.Success" /></MudItem>
+    </MudGrid>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-5">
+        CPU and RAM are measured for the whole shared API process; the server cannot truthfully split those values by WhatsApp number. Per-client database bytes are an estimate of stored row payloads and exclude indexes and SQL Server overhead. Isolated per-client CPU/RAM requires running each client in its own worker process or container.
+    </MudAlert>
+
+    <MudPaper Class="panel-card" Elevation="0">
+        <div class="panel-heading"><div><MudText Typo="Typo.h6">Usage by client API</MudText><MudText Typo="Typo.caption" Class="muted-text">Sampled @(_usage.SampledAtUtc.ToLocalTime().ToString("g"))</MudText></div></div>
+        @if (_usage.Clients.Count == 0)
+        {
+            <EmptyState Icon="@Icons.Material.Filled.Analytics" Title="No client usage yet" Message="Create a WhatsApp client to see its session, message, and storage usage." ActionText="Add a client" ActionHref="/instances" />
+        }
+        else
+        {
+            <MudTable Items="_usage.Clients" Hover="true" Dense="true" Elevation="0">
+                <HeaderContent><MudTh>Client / WhatsApp number</MudTh><MudTh>Status</MudTh><MudTh>Messages</MudTh><MudTh>Session records</MudTh><MudTh>Estimated DB data</MudTh><MudTh>CPU / RAM</MudTh></HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Client"><MudText Typo="Typo.subtitle2">@context.ClientId</MudText><MudText Typo="Typo.caption" Class="muted-text">@(context.WhatsAppNumber ?? "Number not linked")</MudText></MudTd>
+                    <MudTd DataLabel="Status"><StatusChip Status="@context.ConnectionStatus" /></MudTd>
+                    <MudTd DataLabel="Messages">@context.StoredMessages.ToString("N0")</MudTd>
+                    <MudTd DataLabel="Session records">@context.SessionRecords.ToString("N0")</MudTd>
+                    <MudTd DataLabel="Estimated DB data">@FormatBytes(context.EstimatedDatabaseBytes)</MudTd>
+                    <MudTd DataLabel="CPU / RAM"><MudText Typo="Typo.caption" Class="muted-text">Shared process</MudText></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    private DashboardUsageSnapshot? _usage;
+    private bool _loading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        _loading = true;
+        _error = null;
+        try { _usage = await Api.GetUsageAsync(); }
+        catch (Exception ex) { _error = ex.Message; Snackbar.Add("Could not load resource usage.", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = Math.Max(0, bytes);
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        return $"{value:0.##} {units[unit]}";
+    }
+}

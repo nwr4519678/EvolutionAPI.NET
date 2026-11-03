@@ -1,8 +1,10 @@
 using EvolutionApi.Domain.Interfaces;
+using EvolutionApi.Application.Common.Monitoring;
 using EvolutionApi.Infrastructure.Persistence;
 using EvolutionApi.Infrastructure.Persistence.Repositories;
 using EvolutionApi.Infrastructure.RateLimiting;
 using EvolutionApi.Infrastructure.Hubs;
+using EvolutionApi.Infrastructure.Monitoring;
 using EvolutionApi.Infrastructure.Scheduling;
 using EvolutionApi.Infrastructure.Security;
 using EvolutionApi.Infrastructure.Services;
@@ -45,6 +47,8 @@ public static class DependencyInjection
                 sql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName);
                 sql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null);
             }));
+        services.AddSingleton<ProcessCpuSampler>();
+        services.AddScoped<IDashboardUsageProvider, DashboardUsageProvider>();
 
         // ── Repositories & Unit of Work ────────────────────────────────────────────
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
