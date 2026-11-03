@@ -1,277 +1,151 @@
-# Evolution API — .NET 10 (Clean Architecture)
+# Evolution API .NET
 
-A production-grade, high-performance .NET 10 implementation of the Evolution API WhatsApp gateway built following **Clean Architecture** principles with **CQRS (MediatR)**, **EF Core**, **SignalR**, and **Scalar**.
+A .NET 10 WhatsApp Web gateway built with Clean Architecture, CQRS/MediatR, Entity Framework Core, SignalR, WebSockets, and Baileys.NET.
 
-Connects natively to WhatsApp Web via [Baileys.NET](https://www.nuget.org/packages/Baileys.NET) and implements the complete WhatsApp Signal protocol stack with End-to-End Encryption (E2EE).
+It provides an Evolution API-style REST interface for managing WhatsApp Web sessions, sending messages, receiving events, delivering webhooks, and integrating with OpenAI, Typebot, Chatwoot, RabbitMQ, Amazon SQS, and NATS.
 
-> **Build Status**: ✅ `net10.0` — Clean Architecture (4 Layers) — 0 Errors, 0 Warnings
+> This project uses a WhatsApp Web client connection. Use dedicated test numbers, follow applicable WhatsApp policies, and validate account and operational risk before production use.
 
----
+## Solution structure
 
-## 🏛️ Clean Architecture Overview
-
-The solution is divided into 4 loosely-coupled layers:
-
-```
-                            ┌─────────────────────────────────┐
-                            │        EvolutionApi.API         │  (Web API, Controllers, SignalR Hub,
-                            │                                 │   WebSockets, Scalar Docs, Middleware)
-                            └───────────────┬─────────────────┘
-                                            │
-                                            ▼
-                            ┌─────────────────────────────────┐
-                            │     EvolutionApi.Application    │  (CQRS Commands, Queries, Handlers,
-                            │                                 │   MediatR, FluentValidation, DTOs)
-                            └───────────────┬─────────────────┘
-                                            │
-                                            ▼
-                            ┌─────────────────────────────────┐
-                            │       EvolutionApi.Domain       │  (Entities, Value Objects, Exceptions,
-                            │                                 │   Repository & Service Contracts)
-                            └───────────────▲─────────────────┘
-                                            │
-                                            │ implements contracts
-                            ┌───────────────┴─────────────────┐
-                            │   EvolutionApi.Infrastructure   │  (Baileys.NET WhatsApp Engine, E2EE Signal,
-                            │                                 │   EF Core AppDbContext, Outbox, Event Transports)
-                            └─────────────────────────────────┘
+```text
+src/
+  EvolutionApi.Domain/          Entities, enums, exceptions, and interfaces
+  EvolutionApi.Application/     CQRS commands/queries, validation, DTOs, mappings
+  EvolutionApi.Infrastructure/  EF Core, SQL queues, Baileys engine, webhooks
+  EvolutionApi.API/             REST API, middleware, SignalR, WebSockets, OpenAPI
+tests/
+  EvolutionApi.Tests/           xUnit unit tests
 ```
 
-### 1. `EvolutionApi.Domain`
-- **Pure Domain Models**: Entities with zero framework dependencies (`Instance`, `Message`, `Chat`, `Contact`, `WebhookConfig`, `WebhookDelivery`, `SessionAuth`, `SignalKey`, `TypebotSetting`, `ChatwootSetting`, `OpenAiSetting`, etc.).
-- **Contracts**: Interfaces for repositories (`IInstanceRepository`, `IChatRepository`, `ISettingsRepository`, `IIntegrationRepository`, `IUnitOfWork`) and core services (`IWhatsAppEngine`, `IWebhookDispatcher`, `ICacheService`, `IEventNotificationService`).
-- **Domain Exceptions**: Strongly-typed exceptions such as `WhatsAppEngineUnavailableException`.
+`EvolutionApi.DotNet.slnx` is the modern solution file. `EvolutionApi.DotNet.sln` is included for tooling that does not support `.slnx`.
 
-### 2. `EvolutionApi.Application`
-- **CQRS Pattern via MediatR**: Segregated Command and Query pipelines across all business features (`Instances`, `Messages`, `Chat`, `Groups`, `Labels`, `Calls`, `Proxy`, `Settings`, `Webhooks`, `Integrations`).
-- **FluentValidation**: Automatic request validation behaviors.
-- **DTOs & Mappings**: Strictly typed request and response contracts.
+## Features
 
-### 3. `EvolutionApi.Infrastructure`
-- **WhatsApp Engine (`EvolutionApi.Infrastructure.WhatsApp.Engine`)**:
-  - `BaileysNetWhatsAppEngine`: Production multi-session engine managing concurrent WhatsApp clients.
-  - `WaSocket`: Raw binary node and IQ stanza exchange.
-  - `WaSignalCrypto`: Cryptographic primitives for Signal Protocol (X3DH, HKDF, Curve25519, AES-256-CBC, HMAC-SHA256).
-  - `WaMessageEncryptor` & `WaInboundDecryptor`: Full outbound and inbound Signal E2E encryption/decryption (`pkmsg`, `msg`, `skmsg`).
-  - `WaMediaUploader`: Secure CDN upload/download for media attachments.
-  - `WaProto`: Protobuf encoding and decoding for all WhatsApp message types.
-- **Persistence & Storage**:
-  - `AppDbContext`: Entity Framework Core with SQL Server, explicit Fluent API mapping, and retry execution strategies.
-  - `SqlSignalKeyStore`: Secure encrypted storage for all Signal session keys, pre-keys, and identity keys.
-  - `SessionKeyStore`: AES-256-GCM encrypted persistence of authentication credentials.
-  - `MessageStoreService`: High-throughput local storage for chat, contact, and message history.
-- **Durable Outbox & Event Transports**:
-  - `OutboundMessageQueue` & `OutboundMessageWorker`: SQL-backed transactional outbox with retry backoff.
-  - `WebhookDispatcher` & `WebhookDeliveryWorker`: Reliable webhook delivery pipeline with exponential backoff and HMAC-SHA256 JWT signing.
-  - `WebSocketTransport`: Real-time WebSocket fan-out to connected subscribers.
-  - `SignalRWebhookDispatcherBridge`: Real-time event bridge pushing WhatsApp events directly to SignalR clients.
-  - Third-party message brokers via official NuGet SDKs: MassTransit RabbitMQ, AWS SQS, and NATS.Net.
-  - OpenAI Processor using the official `OpenAI` SDK for automated response workflows.
+- Instance creation, QR connection, reconnect, logout, delete, and state tracking
+- Text, media, audio, sticker, location, contact, reaction, poll, list, and status messages
+- Chats, contacts, groups, labels, profile operations, and calls
+- SQL Server persistence for instances, messages, Signal keys, session credentials, webhooks, and scheduled work
+- Encrypted session and Signal-key storage through ASP.NET Core Data Protection
+- Durable outbound and webhook queues with leases, retries, backoff, and failure status
+- HMAC/JWT-style webhook authorization, SignalR events, and WebSocket event streaming
+- API-key authorization, tenant resolution, rate limiting, SSRF protection, and media size limits
+- Hangfire scheduling and OpenAI, Typebot, Chatwoot, RabbitMQ, SQS, and NATS integrations
 
-### 4. `EvolutionApi.API`
-- **REST Endpoints**: Thin controllers invoking MediatR handlers with standardized ProblemDetails error responses.
-- **Real-Time Streaming**:
-  - **SignalR Hub**: Accessible at `/hubs/events` for real-time typed events (QR updates, connection state, messages).
-  - **WebSockets**: Native WebSocket streaming endpoint at `/ws/{instanceName}`.
-- **Security & Resilience**:
-  - `ApiKeyFilter`: API key authentication and authorization per instance and globally.
-  - `RateLimiter`: ASP.NET Core sliding-window and fixed-window rate limiters.
-- **Scalar API Documentation**: Beautiful, modern OpenAPI interactive documentation at `/scalar/v1`.
+## Requirements
 
----
+- .NET 10 SDK
+- SQL Server, Azure SQL, or SQL Server in Docker
+- A public HTTPS URL for production webhooks and callbacks
+- A dedicated WhatsApp test number for staging validation
 
-## ⚡ Features & Parity
+## Local development
 
-| Feature Domain | Capabilities | Status |
-|---|---|---|
-| **Instance Lifecycle** | Create, Connect, Restart, Logout, Delete, State tracking | ✅ Supported |
-| **Messaging (13 types)** | Text, Media (Image, Audio, Video, Document), Location, Contact, Reaction, Poll, List, Status, ephemerals | ✅ E2EE Signal Encrypted |
-| **Chats & Contacts** | Fetch chats, messages, contacts, mark read, archive, delete messages | ✅ Supported |
-| **Group Operations** | Create, update participants, promote/demote, subject, description, invite codes, group pictures | ✅ Supported |
-| **Labels & Business** | Create, update, delete labels, assign/remove chat labels, business profile retrieval | ✅ Supported |
-| **Calls** | Audio and video call offer IQs (JINGLE protocol) | ✅ Supported |
-| **Profile Management** | Profile pictures (upload/remove), privacy settings, status, name | ✅ Supported |
-| **Webhooks** | Durable SQL queue, retry policies, HMAC-SHA256 signing, global & local webhooks | ✅ Supported |
-| **Real-time Push** | SignalR hub (`/hubs/events`) and WebSocket streaming (`/ws/{instance}`) | ✅ Supported |
-| **Integrations** | Typebot, Chatwoot, OpenAI, RabbitMQ, AWS SQS, NATS | ✅ Supported |
+Configure SQL Server in `src/EvolutionApi.API/appsettings.Development.json` or with environment variables, then apply migrations:
 
----
-
-## 🚀 Getting Started
-
-## Production deployment
-
-The service deliberately refuses to start in `Production` unless the SQL connection,
-gateway key, Hangfire dashboard key, and a persistent Data Protection key path are
-configured. Keep every secret outside source control.
-
-1. Copy `.env.production.template` to `.env.production` and replace every placeholder
-   with unique secrets from your secret store.
-2. Apply EF migrations against the production database from your CI/CD release step:
-   `dotnet ef database update --project src/EvolutionApi.Infrastructure --startup-project src/EvolutionApi.API --configuration Release`.
-3. Build and start behind a TLS reverse proxy: `docker compose -f docker-compose.production.template.yml up -d --build`.
-4. Expose only the reverse proxy publicly. The template binds the application to
-   `127.0.0.1:8080`; preserve the named Data Protection volume when redeploying.
-
-Use a dedicated, restricted SQL account and enforce outbound network egress at the
-host/firewall level. `OutboundHttp__AllowedHosts` is an optional comma-separated
-allow-list for webhook and media domains; private, loopback, and link-local addresses
-are always rejected by the application.
-
-### Prerequisites
-
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- SQL Server (LocalDB, Express, Standard, or Azure SQL)
-
-### Configuration
-
-Update `src/EvolutionApi.API/appsettings.json` (or set environment variables):
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost;Database=EvolutionApi;Trusted_Connection=True;TrustServerCertificate=True;"
-  },
-  "Evolution": {
-    "ApiKey": "your-global-api-key",
-    "SessionEncryptionKey": "<base64-encoded-32-byte-aes-key>",
-    "ServerUrl": "http://localhost:5000"
-  }
-}
+```powershell
+dotnet ef database update `
+  --project src/EvolutionApi.Infrastructure `
+  --startup-project src/EvolutionApi.API
 ```
 
-Generate a secure 32-byte session encryption key:
-```bash
-# PowerShell
-[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+Start the API:
 
-# Or Node.js
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-### Apply EF Core Migrations
-
-```bash
-dotnet ef database update --project src/EvolutionApi.Infrastructure --startup-project src/EvolutionApi.API
-```
-
-### Run the API
-
-```bash
+```powershell
 dotnet run --project src/EvolutionApi.API
 ```
 
-Once running:
-- **Scalar API Documentation**: Navigate to `http://localhost:5000/scalar/v1`
-- **OpenAPI Schema**: `http://localhost:5000/openapi/v1.json`
-- **SignalR Hub**: `http://localhost:5000/hubs/events`
-- **WebSocket Stream**: `ws://localhost:5000/ws/{instanceName}`
+Development endpoints:
 
----
+- Scalar: `http://localhost:5051/scalar/v1`
+- OpenAPI: `http://localhost:5051/openapi/v1.json`
+- Health: `http://localhost:5051/health`
+- SignalR: `http://localhost:5051/hubs/events`
+- WebSocket: `ws://localhost:5051/ws/{instanceName}`
 
-## 📖 API Usage Examples
+## Configuration
 
-### 1. Create an Instance
-```bash
-curl -X POST http://localhost:5000/instance/create \
-  -H "apikey: your-global-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "instanceName": "my-clinic",
-    "token": "clinic-secret-token"
-  }'
+Use environment variables or a secret store for credentials. Never commit production secrets.
+
+```text
+ConnectionStrings__DefaultConnection=Server=...;Database=EvolutionApi;...
+Evolution__ApiKey=<global-api-key>
+Evolution__HangfireDashboardApiKey=<different-dashboard-key>
+Evolution__ServerUrl=https://api.example.com
+DataProtection__KeyPath=/var/lib/evolution-api/data-protection-keys
+Media__MaxDownloadBytes=33554432
+OutboundHttp__AllowedHosts=hooks.example.com,cdn.example.com
+ApiDocumentation__Enabled=false
 ```
 
-### 2. Connect & Scan QR Code
-```bash
-curl http://localhost:5000/instance/connect/my-clinic \
+Production startup fails fast unless the SQL connection, gateway key, Hangfire dashboard key, and persistent Data Protection key path are configured. Preserve the Data Protection key directory across restarts or session credentials cannot be decrypted.
+
+## API quick start
+
+Create an instance:
+
+```powershell
+curl -X POST http://localhost:5051/instance/create `
+  -H "apikey: <global-api-key>" `
+  -H "Content-Type: application/json" `
+  -d '{"instanceName":"my-clinic","token":"clinic-secret-token"}'
+```
+
+Request a QR code:
+
+```powershell
+curl http://localhost:5051/instance/connect/my-clinic `
   -H "apikey: clinic-secret-token"
 ```
-*(Returns base64 QR code to scan with WhatsApp on your phone)*
 
-### 3. Send a Text Message
-```bash
-curl -X POST http://localhost:5000/message/sendText/my-clinic \
-  -H "apikey: clinic-secret-token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "number": "1234567890",
-    "text": { "message": "Hello from Evolution API .NET!" }
-  }'
+Send a text message:
+
+```powershell
+curl -X POST http://localhost:5051/message/sendText/my-clinic `
+  -H "apikey: clinic-secret-token" `
+  -H "Content-Type: application/json" `
+  -d '{"number":"1234567890","text":{"message":"Hello from Evolution API .NET"}}'
 ```
 
-### 4. Connect via WebSocket
-```javascript
-const ws = new WebSocket('wss://your-host/ws/my-clinic');
+All protected HTTP endpoints require `apikey`. Instance routes accept the instance key; global management operations require the global key. SignalR requires the global key. WebSocket clients must provide the key in the `apikey` header; do not put credentials in URLs.
 
-// Browser WebSockets cannot send custom headers. Use a server-side WebSocket
-// client/proxy that sends the `apikey` header; never put API keys in a URL.
+## Testing
 
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  console.log('WhatsApp event received:', data);
-  // Example: { event: "MESSAGES_UPSERT", instance: "my-clinic", data: { ... } }
-};
+The test project is a separate solution layer and does not change production project dependencies.
+
+```powershell
+dotnet restore EvolutionApi.DotNet.slnx
+dotnet build EvolutionApi.DotNet.slnx -c Release
+dotnet test EvolutionApi.DotNet.slnx -c Release
 ```
 
-### 5. Connect via SignalR
-```javascript
-import * as signalR from "@microsoft/signalr";
+The current unit suite covers result/pagination behavior, production configuration validation, API-key authorization, URL/SSRF rules, and Data Protection round trips. Full staging verification must additionally exercise QR pairing, restart recovery, reconnects, inbound/outbound messages, media, webhooks, tenant isolation, and database restore.
 
-const connection = new signalR.HubConnectionBuilder()
-  .withUrl("https://your-host/hubs/events", {
-    headers: { apikey: "your-global-api-key" }
-  })
-  .withAutomaticReconnect()
-  .build();
+## Production deployment
 
-// Subscribe to real-time events for an instance
-connection.on("InstanceEvent", (instanceName, eventName, payload) => {
-  console.log(`[${instanceName}] ${eventName}:`, payload);
-});
+Copy `.env.production.template` to `.env.production`, fill it from a secret manager, and deploy behind a TLS reverse proxy:
 
-await connection.start();
-await connection.invoke("SubscribeToInstance", "my-clinic");
+```powershell
+dotnet ef database update `
+  --project src/EvolutionApi.Infrastructure `
+  --startup-project src/EvolutionApi.API `
+  --configuration Release
+
+docker compose -f docker-compose.production.template.yml up -d --build
 ```
 
----
+The container runs as a non-root user, binds the application to localhost, uses a read-only filesystem, and persists Data Protection keys in a named volume. Expose only the reverse proxy publicly. Apply host-level egress controls in addition to the application URL validator.
 
-## 🔒 Signal E2EE Protocol Details
+## Operational checklist
 
-The internal engine handles end-to-end encryption compliant with WhatsApp 3.3 specifications:
-- **Outbound Encryption**:
-  1. Computes recipient pre-key bundle using WhatsApp USync IQ query.
-  2. Executes X3DH shared-secret agreement and Double Ratchet key derivation.
-  3. Constructs Signal Protocol `PreKeyWhisperMessage` and `WhisperMessage` nodes.
-  4. Encrypts group broadcasts via Sender Keys (`SenderKeyMessage`).
-- **Inbound Decryption**:
-  1. Decrypts `pkmsg` using identity keys, signed pre-keys, and one-time pre-keys.
-  2. Advances Double Ratchet state to decrypt incoming message payload (`msg`).
-  3. Tracks and prunes consumed one-time keys to prevent replay attacks.
-- **Encrypted Storage**:
-  1. All Signal keys, auth credentials, and tokens are protected via `ISecretProtector` using AES-256-GCM.
+- Use managed SQL Server with backups and tested restore procedures.
+- Keep API keys, database credentials, and Data Protection keys in a secret manager.
+- Preserve the Data Protection volume on every redeploy.
+- Protect `/hangfire` with the dedicated dashboard key and restrict network access.
+- Keep Scalar/OpenAPI disabled in production unless explicitly required.
+- Configure HTTPS, trusted forwarded headers, DNS, webhooks, monitoring, and alerts.
+- Run the staging WhatsApp smoke test before promoting a release.
 
----
+## License
 
-## 🛠️ Tech Stack & Packages
-
-- **Language / Runtime**: C# 14 / .NET 10
-- **Architecture**: Clean Architecture + CQRS
-- **Mediator**: [MediatR](https://www.nuget.org/packages/MediatR)
-- **Validation**: [FluentValidation](https://www.nuget.org/packages/FluentValidation.AspNetCore)
-- **Database / ORM**: EF Core 10, SQL Server (`Microsoft.EntityFrameworkCore.SqlServer`)
-- **API Documentation**: [Scalar.AspNetCore](https://www.nuget.org/packages/Scalar.AspNetCore)
-- **Real-Time**: Microsoft ASP.NET Core SignalR & native WebSockets
-- **WhatsApp Engine**: [Baileys.NET](https://www.nuget.org/packages/Baileys.NET)
-- **Messaging / Integration SDKs**:
-  - [MassTransit.RabbitMQ](https://www.nuget.org/packages/MassTransit.RabbitMQ)
-  - [MassTransit.AmazonSQS](https://www.nuget.org/packages/MassTransit.AmazonSQS)
-  - [NATS.Net](https://www.nuget.org/packages/NATS.Net)
-  - [OpenAI](https://www.nuget.org/packages/OpenAI)
-  - [QRCoder](https://www.nuget.org/packages/QRCoder)
-
----
-
-## 📄 License
-
-Apache License 2.0 — compatible with the original [Evolution API](https://github.com/EvolutionAPI/evolution-api).
+Apache License 2.0. Review upstream and dependency licenses before redistribution.
