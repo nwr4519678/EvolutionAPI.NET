@@ -1,14 +1,15 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 
-<MudLayout Class="dashboard-shell">
+<MudLayout Class="@($"dashboard-shell {(_darkMode ? "dark-mode" : string.Empty)}")">
     <MudAppBar Elevation="0" Color="Color.Transparent" Class="dashboard-appbar">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" />
         <MudText Typo="Typo.h6" Class="brand-title">Evolution <span>Control</span></MudText>
         <MudSpacer />
         <MudChip T="string" Size="Size.Small" Color="@(State.IsConfigured ? Color.Success : Color.Warning)" Variant="Variant.Outlined">
-            @(State.IsConfigured ? "API connected" : "Configure API key")
+            @(State.IsConfigured ? "API key configured" : "Configure API key")
         </MudChip>
-        <MudIconButton Icon="@Icons.Material.Filled.DarkMode" Color="Color.Inherit" OnClick="ToggleTheme" />
+        <MudIconButton Icon="@(_darkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit" aria-label="Toggle dark mode" OnClick="ToggleTheme" />
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" Elevation="1" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md" Class="dashboard-drawer">
@@ -29,7 +30,12 @@
 @code {
     [Inject] private DashboardState State { get; set; } = null!;
     private bool _drawerOpen = true;
+    private bool _darkMode;
+
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
-    private void ToggleTheme() { }
+    private void ToggleTheme() => _darkMode = !_darkMode;
+    public void Dispose() => State.Changed -= OnStateChanged;
 }

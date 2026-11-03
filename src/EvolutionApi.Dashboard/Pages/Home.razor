@@ -6,12 +6,13 @@
 <PageTitle>Overview · Evolution Control</PageTitle>
 
 <div class="hero-block">
-    <div>
-        <MudText Typo="Typo.overline" Class="eyebrow">CONTROL CENTER</MudText>
-        <MudText Typo="Typo.h3" Class="hero-title">Good morning, operator.</MudText>
-        <MudText Typo="Typo.body1" Class="muted-text">Monitor every WhatsApp Web connection from one calm, focused workspace.</MudText>
+    <div class="hero-copy">
+        <MudText Typo="Typo.overline" Class="eyebrow">EVOLUTION CONTROL CENTER</MudText>
+        <MudText Typo="Typo.h3" Class="hero-title">@Greeting, operator.</MudText>
+        <MudText Typo="Typo.body1" Class="muted-text">Your WhatsApp Web sessions, at a glance.</MudText>
+        <MudText Typo="Typo.caption" Class="muted-text hero-date">@DateTime.Now.ToString("dddd, dd MMMM yyyy")</MudText>
     </div>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/instances">New instance</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Add" Href="/instances">New instance</MudButton>
 </div>
 
 @if (!State.IsConfigured)
@@ -22,9 +23,9 @@
 }
 
 <MudGrid Spacing="3" Class="mb-6">
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Total instances" Value="@_instances.Count.ToString()" Icon="@Icons.Material.Filled.Devices" Color="Color.Primary" /></MudItem>
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Connected" Value="@ConnectedCount.ToString()" Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" /></MudItem>
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Needs attention" Value="@AttentionCount.ToString()" Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" /></MudItem>
+    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Total instances" Value="@(_hasLoaded ? _instances.Count.ToString() : "—")" Icon="@Icons.Material.Filled.Devices" Color="Color.Primary" /></MudItem>
+    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Connected" Value="@(_hasLoaded ? ConnectedCount.ToString() : "—")" Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" /></MudItem>
+    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Needs attention" Value="@(_hasLoaded ? AttentionCount.ToString() : "—")" Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" /></MudItem>
     <MudItem xs="12" sm="6" md="3"><MetricCard Label="API readiness" Value="@(_health?.Status ?? "—")" Icon="@Icons.Material.Filled.CloudDone" Color="Color.Info" /></MudItem>
 </MudGrid>
 
@@ -33,6 +34,7 @@
         <MudPaper Class="panel-card" Elevation="0">
             <div class="panel-heading"><div><MudText Typo="Typo.h6">Your instances</MudText><MudText Typo="Typo.caption" Class="muted-text">Live connection inventory</MudText></div><MudButton Href="/instances" Variant="Variant.Text" Color="Color.Primary">View all</MudButton></div>
             @if (_loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" /> }
+            else if (!State.IsConfigured) { <EmptyState Icon="@Icons.Material.Filled.Key" Title="Connect your gateway" Message="Add the gateway API key to view your live sessions." ActionText="Open settings" ActionHref="/settings" /> }
             else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No instances yet" Message="Create your first WhatsApp Web instance to get started." ActionText="Create instance" ActionHref="/instances" /> }
             else
             {
@@ -57,6 +59,8 @@
     private List<DashboardInstance> _instances = [];
     private DashboardHealth? _health;
     private bool _loading;
+    private bool _hasLoaded;
+    private string Greeting => DateTime.Now.Hour switch { < 12 => "Good morning", < 18 => "Good afternoon", _ => "Good evening" };
     private int ConnectedCount => _instances.Count(i => i.ConnectionStatus.Equals("open", StringComparison.OrdinalIgnoreCase) || i.ConnectionStatus.Equals("connected", StringComparison.OrdinalIgnoreCase));
     private int AttentionCount => _instances.Count - ConnectedCount;
 
@@ -64,7 +68,7 @@
     {
         if (!State.IsConfigured) return;
         _loading = true;
-        try { _instances = (await Api.GetInstancesAsync()).ToList(); _health = await Api.GetHealthAsync(); }
+        try { _instances = (await Api.GetInstancesAsync()).ToList(); _health = await Api.GetHealthAsync(); _hasLoaded = true; }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
         finally { _loading = false; }
     }

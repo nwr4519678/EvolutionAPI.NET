@@ -2,7 +2,11 @@
     <MudIcon Icon="@Icon" Size="Size.Large" Color="Color.Primary" />
     <MudText Typo="Typo.h6">@Title</MudText>
     <MudText Typo="Typo.body2" Class="muted-text">@Message</MudText>
-    @if (!string.IsNullOrWhiteSpace(ActionText)) { <MudButton Href="@ActionHref" Variant="Variant.Filled" Color="Color.Primary" Class="mt-3">@ActionText</MudButton> }
+    @if (!string.IsNullOrWhiteSpace(ActionText))
+    {
+        @if (OnAction.HasDelegate) { <MudButton OnClick="OnAction" Variant="Variant.Filled" Color="Color.Primary" Class="mt-3">@ActionText</MudButton> }
+        else { <MudButton Href="@ActionHref" Variant="Variant.Filled" Color="Color.Primary" Class="mt-3">@ActionText</MudButton> }
+    }
 </div>
 
 @code {
@@ -11,4 +15,5 @@
     [Parameter] public string Message { get; set; } = string.Empty;
     [Parameter] public string? ActionText { get; set; }
     [Parameter] public string? ActionHref { get; set; }
+    [Parameter] public EventCallback OnAction { get; set; }
 }

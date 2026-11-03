@@ -7,6 +7,11 @@
 <PageTitle>Instances · Evolution Control</PageTitle>
 <div class="page-heading"><div><MudText Typo="Typo.h4">Instances</MudText><MudText Class="muted-text">Create, connect, and operate WhatsApp Web sessions.</MudText></div><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">Create instance</MudButton></div>
 
+@if (!State.IsConfigured)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-5">Configure the gateway API key in <MudLink Href="/settings">Settings</MudLink> before managing instances.</MudAlert>
+}
+
 @if (!string.IsNullOrWhiteSpace(_createdKey))
 {
     <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-5" ShowCloseIcon="true" CloseIconClicked="(() => _createdKey = null)">
@@ -15,15 +20,25 @@
     </MudAlert>
 }
 
+@if (_deleteCandidate is not null)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-5" ShowCloseIcon="true" CloseIconClicked="CancelDelete">
+        Delete instance <strong>@_deleteCandidate.Name</strong> and its saved session data?
+        <MudButton Class="ml-3" Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmDelete">Delete permanently</MudButton>
+        <MudButton Class="ml-2" Variant="Variant.Text" OnClick="CancelDelete">Cancel</MudButton>
+    </MudAlert>
+}
+
 <MudGrid Spacing="3">
     <MudItem xs="12" lg="8">
         <MudPaper Class="panel-card" Elevation="0">
             @if (_loading) { <MudProgressLinear Indeterminate="true" /> }
-            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No WhatsApp sessions" Message="Create an instance, then scan its QR code." ActionText="Create instance" ActionHref="/instances" /> }
+            else if (!State.IsConfigured) { <EmptyState Icon="@Icons.Material.Filled.Key" Title="Gateway key required" Message="Add your API key before loading sessions." ActionText="Open settings" ActionHref="/settings" /> }
+            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No WhatsApp sessions" Message="Create an instance, then scan its QR code." ActionText="Create instance" OnAction="OpenCreate" /> }
             else
             {
                 <MudTable Items="_instances" Hover="true" Dense="true" Elevation="0" Filter="new Func<DashboardInstance, bool>(Filter)">
-                    <ToolBarContent><MudTextField @bind-Value="_search" Placeholder="Search instances" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" /></ToolBarContent>
+                    <ToolBarContent><MudTextField @bind-Value="_search" Placeholder="Search instances" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" /><MudSpacer /><MudIconButton Icon="@Icons.Material.Filled.Refresh" aria-label="Refresh instances" OnClick="Load" /></ToolBarContent>
                     <HeaderContent><MudTh>Instance</MudTh><MudTh>Number</MudTh><MudTh>Status</MudTh><MudTh>Created</MudTh><MudTh></MudTh></HeaderContent>
                     <RowTemplate><MudTd DataLabel="Instance"><MudLink Href="@($"/instances/{context.Name}")">@context.Name</MudLink><MudText Typo="Typo.caption" Class="muted-text">@context.Integration</MudText></MudTd><MudTd DataLabel="Number">@(context.Number ?? "—")</MudTd><MudTd DataLabel="Status"><StatusChip Status="@context.ConnectionStatus" /></MudTd><MudTd DataLabel="Created">@context.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</MudTd><MudTd><MudIconButton Icon="@Icons.Material.Filled.QrCode2" Color="Color.Primary" OnClick="@(() => Connect(context))" /><MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Warning" OnClick="@(() => Logout(context))" /><MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Color="Color.Error" OnClick="@(() => Delete(context))" /></MudTd></RowTemplate>
                 </MudTable>
@@ -34,6 +49,7 @@
         <MudPaper Class="panel-card session-panel" Elevation="0">
             <MudText Typo="Typo.h6">Connection station</MudText>
             @if (_selected is null) { <EmptyState Icon="@Icons.Material.Filled.QrCode2" Title="Select a session" Message="Choose Connect on an instance to request a QR code." /> }
+            else if (_connecting) { <MudProgressCircular Indeterminate="true" Color="Color.Primary" Class="mt-6" /> }
             else { <MudText Typo="Typo.subtitle1">@_selected.Name</MudText><StatusChip Status="@(_qr?.State ?? _selected.ConnectionStatus)" />
                 @if (!string.IsNullOrWhiteSpace(_qr?.QrCode?.Base64)) { <img class="qr-image" src="@_qr.QrCode.Base64" alt="WhatsApp QR code" /><MudText Typo="Typo.caption" Class="muted-text">Scan this code from WhatsApp → Linked devices.</MudText> }
                 else { <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-4">No QR is currently available. The session may already be connected.</MudAlert> }
@@ -47,7 +63,7 @@
 {
     <MudPaper Class="create-panel panel-card" Elevation="0">
         <div class="panel-heading"><MudText Typo="Typo.h6">Create WhatsApp instance</MudText><MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseCreate" /></div>
-        <MudGrid Spacing="2"><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.InstanceName" Label="Instance name" Required="true" /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Token" Label="Instance API key" Required="true" InputType="InputType.Password" /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Number" Label="Phone number (optional)" Placeholder="+201..." /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.WebhookUrl" Label="Webhook URL (optional)" /></MudItem></MudGrid>
+        <MudGrid Spacing="2"><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.InstanceName" Label="Instance name" Required="true" /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Token" Label="Instance API key" Required="true" InputType="InputType.Password" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Autorenew" OnAdornmentClick="GenerateKey" /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Number" Label="Phone number (optional)" Placeholder="+201..." /></MudItem><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.WebhookUrl" Label="Webhook URL (optional)" /></MudItem></MudGrid>
         <MudButton Class="mt-4" Color="Color.Primary" Variant="Variant.Filled" OnClick="Create">Create instance</MudButton>
     </MudPaper>
 }
@@ -59,17 +75,22 @@
     private ConnectResult? _qr;
     private bool _loading;
     private bool _createOpen;
+    private bool _connecting;
     private string _search = string.Empty;
     private CreateInstanceRequest _newInstance = new();
     private string? _createdKey;
+    private DashboardInstance? _deleteCandidate;
 
     protected override async Task OnInitializedAsync() { await Load(); if (!string.IsNullOrWhiteSpace(InstanceName)) { var item = _instances.FirstOrDefault(i => i.Name == InstanceName); if (item is not null) await Connect(item); } }
     private async Task Load() { if (!State.IsConfigured) return; _loading = true; try { _instances = (await Api.GetInstancesAsync()).ToList(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _loading = false; } }
     private bool Filter(DashboardInstance item) => string.IsNullOrWhiteSpace(_search) || item.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || (item.Number?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false);
     private void OpenCreate() => _createOpen = true;
+    private void GenerateKey() => _newInstance.Token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     private void CloseCreate() { _createOpen = false; _newInstance = new(); }
-    private async Task Create() { try { var result = await Api.CreateInstanceAsync(_newInstance); _createdKey = result.ApiKey; Snackbar.Add($"Instance {result.InstanceName} created", Severity.Success); CloseCreate(); await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
-    private async Task Connect(DashboardInstance instance) { _selected = instance; State.SelectInstance(instance.Name); try { _qr = await Api.ConnectAsync(instance.Name); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
+    private async Task Create() { if (string.IsNullOrWhiteSpace(_newInstance.InstanceName) || string.IsNullOrWhiteSpace(_newInstance.Token)) { Snackbar.Add("Enter an instance name and API key.", Severity.Warning); return; } if (!State.IsConfigured) { Snackbar.Add("Configure the gateway API key in Settings first.", Severity.Warning); return; } try { var result = await Api.CreateInstanceAsync(_newInstance); _createdKey = result.ApiKey; Snackbar.Add($"Instance {result.InstanceName} created", Severity.Success); CloseCreate(); await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
+    private async Task Connect(DashboardInstance instance) { _selected = instance; _qr = null; _connecting = true; State.SelectInstance(instance.Name); try { _qr = await Api.ConnectAsync(instance.Name); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _connecting = false; } }
     private async Task Logout(DashboardInstance instance) { try { await Api.LogoutAsync(instance.Name); Snackbar.Add($"{instance.Name} logged out", Severity.Success); await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
-    private async Task Delete(DashboardInstance instance) { try { await Api.DeleteAsync(instance.Name); Snackbar.Add($"{instance.Name} deleted", Severity.Success); if (_selected?.Name == instance.Name) _selected = null; await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
+    private void Delete(DashboardInstance instance) => _deleteCandidate = instance;
+    private void CancelDelete() => _deleteCandidate = null;
+    private async Task ConfirmDelete() { if (_deleteCandidate is not { } instance) return; try { await Api.DeleteAsync(instance.Name); Snackbar.Add($"{instance.Name} deleted", Severity.Success); if (_selected?.Name == instance.Name) _selected = null; _deleteCandidate = null; await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
 }

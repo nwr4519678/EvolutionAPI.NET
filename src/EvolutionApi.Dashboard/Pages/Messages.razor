@@ -6,6 +6,11 @@
 <PageTitle>Send message · Evolution Control</PageTitle>
 <div class="page-heading"><div><MudText Typo="Typo.h4">Message console</MudText><MudText Class="muted-text">Send a controlled text message through a connected session.</MudText></div></div>
 
+@if (!State.IsConfigured)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-5">Configure the gateway API key in <MudLink Href="/settings">Settings</MudLink> before sending messages.</MudAlert>
+}
+
 <MudGrid Spacing="3">
     <MudItem xs="12" md="7">
         <MudPaper Class="panel-card" Elevation="0">
@@ -13,7 +18,7 @@
             <MudSelect T="string" @bind-Value="_instance" Label="Instance" Class="mt-4" Required="true"><MudSelectItem T="string" Value="@string.Empty">Select an instance</MudSelectItem>@foreach (var item in _instances) { <MudSelectItem T="string" Value="@item.Name">@item.Name · @item.ConnectionStatus</MudSelectItem> }</MudSelect>
             <MudTextField @bind-Value="_number" Label="Recipient number" Placeholder="1234567890" Class="mt-3" Required="true" />
             <MudTextField @bind-Value="_message" Label="Message" Lines="5" Variant="Variant.Outlined" Class="mt-3" Required="true" />
-            <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Send" Disabled="@_sending" OnClick="Send">@(_sending ? "Sending…" : "Send message")</MudButton>
+            <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Send" Disabled="@(_sending || !State.IsConfigured)" OnClick="Send">@(_sending ? "Sending…" : "Send message")</MudButton>
         </MudPaper>
     </MudItem>
     <MudItem xs="12" md="5">
