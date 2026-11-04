@@ -1,0 +1,110 @@
+@page "/team"
+@using EvolutionApi.Dashboard.Services
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Team & Role-Based Access Control</h1>
+            <p class="page-subtitle">Manage client agents, administrators, and granular role assignments</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.PersonAdd"
+                       OnClick="@(() => _showInviteModal = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Invite Team Member
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Team Members Table -->
+    <div class="glass-card mt-6">
+        <MudTable Items="@_members" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Member</MudTh>
+                <MudTh>Role</MudTh>
+                <MudTh>Permissions</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh Style="text-align: right;">Action</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Member">
+                    <div class="client-cell">
+                        <MudAvatar Color="Color.Primary" Size="Size.Small">
+                            @context.Email[0].ToString().ToUpper()
+                        </MudAvatar>
+                        <div class="client-cell__info">
+                            <span class="font-semibold text-primary">@context.Name</span>
+                            <span class="text-xs text-muted">@context.Email</span>
+                        </div>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Role">
+                    <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Filled">
+                        @context.Role
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Permissions">
+                    <span class="text-xs text-secondary">@context.Permissions</span>
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    <StatusBadge Status="Active" />
+                </MudTd>
+                <MudTd Style="text-align: right;">
+                    <MudIconButton Icon="@Icons.Material.Rounded.MoreVert" Size="Size.Small" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </div>
+</div>
+
+<!-- Invite Member Modal -->
+<MudDialog @bind-Visible="_showInviteModal">
+    <TitleContent><MudText Typo="Typo.h6">Invite Team Member</MudText></TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_inviteEmail" Label="Email Address" Variant="Variant.Outlined" InputType="InputType.Email" Required="true" />
+            <MudTextField @bind-Value="_inviteName" Label="Full Name" Variant="Variant.Outlined" Required="true" />
+            <MudSelect @bind-Value="_inviteRole" Label="Role Assignment" Variant="Variant.Outlined">
+                <MudSelectItem Value="@("ClientAdmin")">Client Administrator (Full Tenant Control)</MudSelectItem>
+                <MudSelectItem Value="@("ClientAgent")">Client Agent (Inbox, Human Takeover, Conversations)</MudSelectItem>
+                <MudSelectItem Value="@("Viewer")">Viewer (Read-only Analytics)</MudSelectItem>
+            </MudSelect>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showInviteModal = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SendInvite">Send Invitation</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private record TeamMember(string Id, string Name, string Email, string Role, string Permissions);
+
+    private readonly List<TeamMember> _members =
+    [
+        new("1", "Super Administrator", "superadmin@platform.local", "SuperAdmin", "Global System Authority"),
+        new("2", "Support Lead", "agent@support.local", "ClientAgent", "Live Inbox, Human Takeover, Messages"),
+        new("3", "Analytics Manager", "analyst@company.local", "Viewer", "Usage & Telemetry Read-only")
+    ];
+
+    private bool _showInviteModal;
+    private string _inviteEmail = "";
+    private string _inviteName = "";
+    private string _inviteRole = "ClientAgent";
+
+    private void SendInvite()
+    {
+        if (string.IsNullOrWhiteSpace(_inviteEmail) || string.IsNullOrWhiteSpace(_inviteName)) return;
+        _members.Add(new(Guid.NewGuid().ToString("D"), _inviteName, _inviteEmail, _inviteRole, "Standard Role Permissions"));
+        _showInviteModal = false;
+        _inviteEmail = "";
+        _inviteName = "";
+        Snackbar.Add("Invitation email dispatched", Severity.Success);
+    }
+}
+

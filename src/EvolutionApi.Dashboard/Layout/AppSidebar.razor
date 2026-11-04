@@ -1,0 +1,136 @@
+@using EvolutionApi.Dashboard.Services
+@inject AppState AppState
+@inject NavigationManager Nav
+@implements IDisposable
+
+@if (AppState.MobileNavigationOpen)
+{
+    <button class="sidebar-backdrop" type="button" aria-label="Close navigation" @onclick="AppState.CloseMobileNavigation"></button>
+}
+<nav id="main-navigation" class="sidebar @(AppState.SidebarCollapsed ? "sidebar--mini" : "sidebar--expanded") @(AppState.MobileNavigationOpen ? "sidebar--mobile-open" : "")"
+     aria-label="Main navigation" @onkeydown="HandleKeyDown">
+
+    <!-- Brand Logo -->
+    <div class="sidebar__brand">
+        <div class="brand-logo">
+            <div class="brand-mark">
+                <MudIcon Icon="@Icons.Custom.Brands.WhatsApp" Color="Color.Inherit" Size="Size.Medium" />
+            </div>
+            @if (!AppState.SidebarCollapsed)
+            {
+                <div class="brand-text">
+                    <span class="brand-name">Evolution</span>
+                    <span class="brand-tagline">CONTROL CENTER</span>
+                </div>
+            }
+        </div>
+        <button class="sidebar__collapse-btn" @onclick="AppState.ToggleSidebar"
+                aria-label="@(AppState.SidebarCollapsed ? "Expand sidebar" : "Collapse sidebar")">
+            <MudIcon Icon="@(AppState.SidebarCollapsed ? Icons.Material.Rounded.ChevronRight : Icons.Material.Rounded.ChevronLeft)"
+                     Size="Size.Small" />
+        </button>
+        <button @ref="_mobileCloseButton" class="sidebar__close-btn" type="button" @onclick="AppState.CloseMobileNavigation" aria-label="Close navigation">
+            <MudIcon Icon="@Icons.Material.Rounded.Close" Size="Size.Small" />
+        </button>
+    </div>
+
+    <!-- Navigation Groups -->
+    <div class="sidebar__nav" role="list">
+
+        @if (AppState.IsSuperAdmin)
+        {
+            <NavGroup Label="Platform" Icon="@Icons.Material.Rounded.AdminPanelSettings" IsCollapsed="@AppState.SidebarCollapsed">
+                <NavItem Href="/" Icon="@Icons.Material.Outlined.Dashboard" Label="Overview" Exact="true" IsCollapsed="@AppState.SidebarCollapsed" />
+                <NavItem Href="/clients" Icon="@Icons.Material.Outlined.Business" Label="Clients" IsCollapsed="@AppState.SidebarCollapsed" />
+                <NavItem Href="/ai-providers" Icon="@Icons.Material.Outlined.Psychology" Label="AI Providers" IsCollapsed="@AppState.SidebarCollapsed" />
+                <NavItem Href="/audit-log" Icon="@Icons.Material.Outlined.History" Label="Audit Log" IsCollapsed="@AppState.SidebarCollapsed" />
+            <NavItem Href="/resources" Icon="@Icons.Material.Outlined.Memory" Label="Resource Usage" IsCollapsed="@AppState.SidebarCollapsed" />
+            </NavGroup>
+        }
+
+        <NavGroup Label="WhatsApp" Icon="@Icons.Material.Rounded.Chat" IsCollapsed="@AppState.SidebarCollapsed">
+            @if (!AppState.IsSuperAdmin)
+            {
+                <NavItem Href="/" Icon="@Icons.Material.Outlined.Dashboard" Label="Overview" Exact="true" IsCollapsed="@AppState.SidebarCollapsed" />
+            }
+            <NavItem Href="/numbers" Icon="@Icons.Material.Outlined.PhoneAndroid" Label="Numbers" IsCollapsed="@AppState.SidebarCollapsed" />
+            <NavItem Href="/inbox" Icon="@Icons.Material.Outlined.Inbox" Label="Live Inbox" IsCollapsed="@AppState.SidebarCollapsed" />
+        </NavGroup>
+
+        <NavGroup Label="Intelligence" Icon="@Icons.Material.Rounded.AutoAwesome" IsCollapsed="@AppState.SidebarCollapsed">
+            <NavItem Href="/prompts" Icon="@Icons.Material.Outlined.EditNote" Label="System Prompts" IsCollapsed="@AppState.SidebarCollapsed" />
+            <NavItem Href="/rules" Icon="@Icons.Material.Outlined.Rule" Label="Rules Engine" IsCollapsed="@AppState.SidebarCollapsed" />
+            <NavItem Href="/knowledge" Icon="@Icons.Material.Outlined.MenuBook" Label="Knowledge Base" IsCollapsed="@AppState.SidebarCollapsed" />
+        </NavGroup>
+
+        <NavGroup Label="Analytics" Icon="@Icons.Material.Rounded.Analytics" IsCollapsed="@AppState.SidebarCollapsed">
+            <NavItem Href="/usage" Icon="@Icons.Material.Outlined.BarChart" Label="Usage & Billing" IsCollapsed="@AppState.SidebarCollapsed" />
+        </NavGroup>
+
+        <NavGroup Label="Integrations" Icon="@Icons.Material.Rounded.Extension" IsCollapsed="@AppState.SidebarCollapsed">
+            <NavItem Href="/api-keys" Icon="@Icons.Material.Outlined.VpnKey" Label="API Keys" IsCollapsed="@AppState.SidebarCollapsed" />
+            <NavItem Href="/webhooks" Icon="@Icons.Material.Outlined.Webhook" Label="Webhooks" IsCollapsed="@AppState.SidebarCollapsed" />
+        </NavGroup>
+
+        <NavGroup Label="Settings" Icon="@Icons.Material.Rounded.Settings" IsCollapsed="@AppState.SidebarCollapsed">
+            <NavItem Href="/team" Icon="@Icons.Material.Outlined.Group" Label="Team & Roles" IsCollapsed="@AppState.SidebarCollapsed" />
+            <NavItem Href="/settings" Icon="@Icons.Material.Outlined.Tune" Label="Settings" IsCollapsed="@AppState.SidebarCollapsed" />
+        </NavGroup>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="sidebar__footer">
+        @if (!AppState.SidebarCollapsed)
+        {
+            <div class="sidebar-user">
+                <MudAvatar Size="Size.Small" Color="Color.Primary" Class="sidebar-user__avatar">
+                    @(AppState.CurrentUserEmail?[0].ToString().ToUpper() ?? "U")
+                </MudAvatar>
+                <div class="sidebar-user__info">
+                    <span class="sidebar-user__email truncate">@AppState.CurrentUserEmail</span>
+                    <span class="sidebar-user__role">@AppState.CurrentUserRole</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <MudTooltip Text="@AppState.CurrentUserEmail" Placement="Placement.Right">
+                <MudAvatar Size="Size.Small" Color="Color.Primary">
+                    @(AppState.CurrentUserEmail?[0].ToString().ToUpper() ?? "U")
+                </MudAvatar>
+            </MudTooltip>
+        }
+    </div>
+</nav>
+
+@code {
+    private ElementReference _mobileCloseButton;
+    private bool _wasMobileOpen;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnStateChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (AppState.MobileNavigationOpen && !_wasMobileOpen)
+            await _mobileCloseButton.FocusAsync();
+        _wasMobileOpen = AppState.MobileNavigationOpen;
+    }
+    private void HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") AppState.CloseMobileNavigation();
+    }
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args) => AppState.CloseMobileNavigation();
+    public void Dispose()
+    {
+        AppState.OnChange -= OnStateChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}
+
+

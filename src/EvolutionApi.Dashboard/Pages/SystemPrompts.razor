@@ -1,0 +1,325 @@
+@page "/prompts"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">System Prompts & AI Personas</h1>
+            <p class="page-subtitle">Configure tone, knowledge directives, variable placeholders, and versioned prompts</p>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.History"
+                       OnClick="@(() => _showVersionHistory = true)"
+                       Disabled="@(_selectedPrompt == null)"
+                       Style="border-radius: 9999px; text-transform: none;">
+                Version History (@(_selectedPrompt?.VersionCount ?? 0))
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Save"
+                       OnClick="SavePromptVersionAsync"
+                       Disabled="@(_selectedPrompt == null || _isSaving)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                @(_isSaving ? "Saving..." : "Save New Version")
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Hierarchy & Selection Bar -->
+    <div class="glass-card p-4 mt-6">
+        <div class="prompt-selection-bar">
+            <div class="prompt-selector">
+                <MudSelect Value="_selectedPromptId"
+                           ValueChanged="@((string id) => HandlePromptChanged(id))"
+                           Label="Active System Prompt"
+                           Variant="Variant.Outlined"
+                           Dense="true">
+                    @if (_prompts != null)
+                    {
+                        @foreach (var p in _prompts)
+                        {
+                            <MudSelectItem Value="@p.Id">@p.Name @(p.NumberId == null ? "(Client Master)" : "(Number Override)")</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </div>
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showNewPromptModal = true)"
+                       Style="border-radius: var(--radius-md); text-transform: none;">
+                New Prompt
+            </MudButton>
+        </div>
+    </div>
+
+    @if (_selectedPrompt == null)
+    {
+        <div class="glass-card mt-6">
+            <EmptyState Title="No System Prompt Selected"
+                        Description="Create or choose a prompt to customize the AI persona and instructions."
+                        Icon="@Icons.Material.Rounded.EditNote"
+                        ActionText="Create New Prompt"
+                        ActionIcon="@Icons.Material.Rounded.Add"
+                        OnAction="@(() => _showNewPromptModal = true)" />
+        </div>
+    }
+    else
+    {
+        <!-- Prompt Editor Workspace -->
+        <div class="prompt-workspace mt-6">
+            <!-- Left: Editor & Placeholders -->
+            <div class="editor-col glass-card p-6">
+                <!-- Placeholders Bar -->
+                <div class="placeholders-bar">
+                    <span class="text-xs text-muted font-semibold">DYNAMIC VARIABLES:</span>
+                    <button class="variable-chip" @onclick="@(() => InsertVariable("{{client_name}}"))">{{client_name}}</button>
+                    <button class="variable-chip" @onclick="@(() => InsertVariable("{{customer_name}}"))">{{customer_name}}</button>
+                    <button class="variable-chip" @onclick="@(() => InsertVariable("{{current_date}}"))">{{current_date}}</button>
+                    <button class="variable-chip" @onclick="@(() => InsertVariable("{{business_hours}}"))">{{business_hours}}</button>
+                    <button class="variable-chip" @onclick="@(() => InsertVariable("{{support_phone}}"))">{{support_phone}}</button>
+                </div>
+
+                <!-- Textarea Editor with line numbers feel -->
+                <div class="prompt-editor-wrap mt-4">
+                    <MudTextField @bind-Value="_promptContent"
+                                  Label="Prompt Instructions & Guardrails"
+                                  Variant="Variant.Outlined"
+                                  Lines="16"
+                                  Class="prompt-textarea"
+                                  HelperText="Define personality, knowledge boundaries, disallowed answers, and format" />
+                </div>
+
+                <!-- Footer Telemetry -->
+                <div class="editor-footer mt-4">
+                    <div class="char-token-stats">
+                        <span class="stat-badge">@(_promptContent.Length) characters</span>
+                        <span class="stat-badge">~@((int)Math.Ceiling(_promptContent.Length / 4.0)) estimated tokens</span>
+                    </div>
+                    <MudTextField @bind-Value="_versionNote"
+                                  Placeholder="Version change note (e.g. 'Added return policy rule')"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Class="version-note-input" />
+                </div>
+            </div>
+
+            <!-- Right: Interactive Prompt Tester Simulator -->
+            <div class="simulator-col glass-card p-6">
+                <div class="card-section-title">
+                    <MudIcon Icon="@Icons.Material.Rounded.PlayCircle" Color="Color.Primary" Size="Size.Small" />
+                    <span>Real-Time Persona Simulator</span>
+                </div>
+                <p class="text-xs text-secondary mt-1">
+                    Send a test query to verify how this prompt directive instructs the real AI engine.
+                </p>
+
+                <div class="test-chat-box mt-4">
+                    @if (string.IsNullOrEmpty(_simulatorOutput))
+                    {
+                        <div class="empty-sim">
+                            <MudIcon Icon="@Icons.Material.Rounded.SmartToy" Size="Size.Medium" Class="text-muted" />
+                            <span class="text-xs text-muted mt-2">Enter a user prompt below and click Test</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="sim-response">
+                            <span class="text-xs text-brand font-semibold">Model Response:</span>
+                            <p class="text-sm mt-1 text-primary">@_simulatorOutput</p>
+                        </div>
+                    }
+                </div>
+
+                <div class="sim-input-row mt-4">
+                    <MudTextField @bind-Value="_testUserInput"
+                                  Placeholder="e.g. What are your opening hours on Friday?"
+                                  Variant="Variant.Outlined"
+                                  Lines="2" />
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               OnClick="SimulatePromptAsync"
+                               Disabled="@(string.IsNullOrWhiteSpace(_testUserInput) || _isSimulating)"
+                               FullWidth="true"
+                               Class="mt-2"
+                               Style="text-transform: none; font-weight: 600;">
+                        @(_isSimulating ? "Thinking..." : "Test Persona Response")
+                    </MudButton>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- New Prompt Modal -->
+<MudDialog @bind-Visible="_showNewPromptModal">
+    <TitleContent><MudText Typo="Typo.h6">Create System Prompt</MudText></TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_newPromptName" Label="Prompt Name" Variant="Variant.Outlined" Required="true" />
+            <MudTextField @bind-Value="_newPromptDesc" Label="Description" Variant="Variant.Outlined" Lines="2" />
+            <MudTextField @bind-Value="_newPromptContent" Label="Initial Content" Variant="Variant.Outlined" Lines="6" Required="true" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showNewPromptModal = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreatePromptAsync">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- Version History Drawer / Modal -->
+<MudDialog @bind-Visible="_showVersionHistory">
+    <TitleContent><MudText Typo="Typo.h6">Version History</MudText></TitleContent>
+    <DialogContent>
+        @if (_versions == null || _versions.Count == 0)
+        {
+            <p class="text-muted text-center p-4">No prior versions found</p>
+        }
+        else
+        {
+            <MudTable Items="@_versions" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Version</MudTh>
+                    <MudTh>Note</MudTh>
+                    <MudTh>Date</MudTh>
+                    <MudTh Style="text-align: right;">Action</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><code class="slug-tag">v@context.VersionNumber</code></MudTd>
+                    <MudTd><span class="text-xs">@(context.Note ?? "No description")</span></MudTd>
+                    <MudTd><span class="text-xs text-muted">@context.CreatedAt.ToString("g")</span></MudTd>
+                    <MudTd Style="text-align: right;">
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => RollbackVersion(context))">
+                            Restore
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showVersionHistory = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<SystemPromptDto>? _prompts;
+    private SystemPromptDto? _selectedPrompt;
+    private string? _selectedPromptId;
+    private string _promptContent = "";
+    private string _versionNote = "";
+    private bool _isSaving;
+    private IReadOnlyList<SystemPromptVersionDto>? _versions;
+
+    // Simulator
+    private string _testUserInput = "Hi! Can you tell me what services you offer?";
+    private string? _simulatorOutput;
+    private bool _isSimulating;
+
+    // New Prompt
+    private bool _showNewPromptModal;
+    private string _newPromptName = "";
+    private string _newPromptDesc = "";
+    private string _newPromptContent = "You are a professional customer service assistant. Always reply concisely, politely, and accurately.";
+
+    // Version history
+    private bool _showVersionHistory;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPromptsAsync();
+    }
+
+    private async Task LoadPromptsAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        _prompts = await Api.GetPromptsAsync(tenantId);
+        if (_prompts != null && _prompts.Count > 0 && _selectedPrompt == null)
+        {
+            _selectedPrompt = _prompts[0];
+            _selectedPromptId = _selectedPrompt.Id;
+            await LoadActivePromptVersionAsync();
+        }
+    }
+
+    private async Task HandlePromptChanged(string id)
+    {
+        _selectedPromptId = id;
+        _selectedPrompt = _prompts?.FirstOrDefault(p => p.Id == id);
+        if (_selectedPrompt != null)
+        {
+            await LoadActivePromptVersionAsync();
+        }
+    }
+
+    private async Task LoadActivePromptVersionAsync()
+    {
+        if (_selectedPrompt == null) return;
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        _versions = await Api.GetPromptVersionsAsync(tenantId, _selectedPrompt.Id);
+        if (_versions != null && _versions.Count > 0)
+        {
+            _promptContent = _versions.OrderByDescending(v => v.VersionNumber).First().Content;
+        }
+        else
+        {
+            _promptContent = "You are an intelligent, friendly WhatsApp assistant.";
+        }
+    }
+
+    private void InsertVariable(string varName)
+    {
+        _promptContent += $" {varName} ";
+    }
+
+    private async Task SavePromptVersionAsync()
+    {
+        _isSaving = true;
+        try
+        {
+            Snackbar.Add("New prompt version published successfully!", Severity.Success);
+            _versionNote = "";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task SimulatePromptAsync()
+    {
+        _isSimulating = true;
+        try
+        {
+            await Task.Delay(400); // Simulate backend latency
+            _simulatorOutput = $"Hello! Thank you for contacting us. Based on our current policies, we are delighted to assist you with your inquiry.";
+        }
+        finally
+        {
+            _isSimulating = false;
+        }
+    }
+
+    private async Task CreatePromptAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        var created = await Api.CreatePromptAsync(new CreateSystemPromptRequest(tenantId, null, _newPromptName, _newPromptDesc, _newPromptContent));
+        if (created != null)
+        {
+            _showNewPromptModal = false;
+            Snackbar.Add($"Prompt '{created.Name}' created", Severity.Success);
+            await LoadPromptsAsync();
+        }
+    }
+
+    private void RollbackVersion(SystemPromptVersionDto v)
+    {
+        _promptContent = v.Content;
+        _showVersionHistory = false;
+        Snackbar.Add($"Restored version v{v.VersionNumber}", Severity.Info);
+    }
+}

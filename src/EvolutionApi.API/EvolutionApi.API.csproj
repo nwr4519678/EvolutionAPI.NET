@@ -18,6 +18,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Scalar.AspNetCore" Version="2.6.0" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
   </ItemGroup>
 
   <PropertyGroup>

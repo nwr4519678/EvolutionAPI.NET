@@ -1,0 +1,168 @@
+@page "/numbers/{Id}"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<div class="page-container">
+    @if (_isLoading && _number == null)
+    {
+        <div class="p-8 text-center">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            <p class="text-secondary mt-3">Loading number configuration...</p>
+        </div>
+    }
+    else if (_number == null)
+    {
+        <EmptyState Title="Number Not Found"
+                    Description="The requested WhatsApp number could not be found."
+                    Icon="@Icons.Material.Rounded.PhoneDisabled"
+                    ActionText="Back to Numbers"
+                    ActionIcon="@Icons.Material.Rounded.ArrowBack"
+                    ActionHref="/numbers" />
+    }
+    else
+    {
+        <!-- Header -->
+        <div class="glass-card p-6">
+            <div class="number-header-row">
+                <div class="number-header-info">
+                    <div class="number-title-row">
+                        <MudIcon Icon="@Icons.Custom.Brands.WhatsApp" Color="Color.Primary" Size="Size.Large" />
+                        <div>
+                            <h1 class="page-title">@_number.DisplayName</h1>
+                            <span class="font-mono text-sm text-secondary">@(_number.PhoneNumber ?? "No phone number registered")</span>
+                        </div>
+                        <StatusBadge Status="@_number.Status" />
+                    </div>
+                </div>
+
+                <div class="number-header-actions">
+                    <MudButton Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Rounded.ArrowBack"
+                               OnClick="@(() => Nav.NavigateTo("/numbers"))"
+                               Style="border-radius: var(--radius-md); text-transform: none;">
+                        Back
+                    </MudButton>
+
+                    @if (_number.Status == "Connected")
+                    {
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Error"
+                                   StartIcon="@Icons.Material.Rounded.PowerOff"
+                                   OnClick="DisconnectAsync"
+                                   Style="border-radius: var(--radius-md); text-transform: none;">
+                            Disconnect
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Rounded.QrCode"
+                                   OnClick="@(() => Nav.NavigateTo("/numbers"))"
+                                   Style="border-radius: var(--radius-md); text-transform: none; font-weight: 600;">
+                            Pair with QR
+                        </MudButton>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Grid -->
+        <div class="details-grid mt-6">
+            <!-- AI & Prompt Settings -->
+            <div class="glass-card p-6">
+                <div class="card-section-title">
+                    <MudIcon Icon="@Icons.Material.Rounded.Psychology" Color="Color.Primary" Size="Size.Small" />
+                    <span>AI Engine & Persona</span>
+                </div>
+
+                <div class="settings-list mt-4">
+                    <div class="settings-row">
+                        <span class="text-secondary">AI Provider</span>
+                        <span class="font-semibold">@(_number.AiProviderId ?? "Platform Default (OpenAI)")</span>
+                    </div>
+                    <MudDivider Class="my-2" />
+                    <div class="settings-row">
+                        <span class="text-secondary">System Prompt</span>
+                        <span class="font-semibold">@(_number.SystemPromptId ?? "Inherit Tenant Master Prompt")</span>
+                    </div>
+                    <MudDivider Class="my-2" />
+                    <div class="settings-row">
+                        <span class="text-secondary">Bot Auto-Reply</span>
+                        <MudSwitch @bind-Value="_botEnabled"
+                                   Color="Color.Primary"
+                                   Label="@(_botEnabled ? "Active" : "Disabled")" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session State -->
+            <div class="glass-card p-6">
+                <div class="card-section-title">
+                    <MudIcon Icon="@Icons.Material.Rounded.Info" Color="Color.Primary" Size="Size.Small" />
+                    <span>Gateway Session State</span>
+                </div>
+
+                <div class="settings-list mt-4">
+                    <div class="settings-row">
+                        <span class="text-secondary">Connection Method</span>
+                        <span class="font-semibold">@_number.ConnectionMethod</span>
+                    </div>
+                    <MudDivider Class="my-2" />
+                    <div class="settings-row">
+                        <span class="text-secondary">Status</span>
+                        <StatusBadge Status="@_number.Status" />
+                    </div>
+                    <MudDivider Class="my-2" />
+                    <div class="settings-row">
+                        <span class="text-secondary">Registered On</span>
+                        <span class="text-xs text-secondary">@_number.CreatedAt.ToString("f")</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private WhatsAppNumberDto? _number;
+    private bool _isLoading = true;
+    private bool _botEnabled = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNumberDataAsync();
+    }
+
+    private async Task LoadNumberDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _number = await Api.GetNumberAsync(tenantId, Id);
+            if (_number != null)
+            {
+                _botEnabled = _number.BotEnabled;
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task DisconnectAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        await Api.DisconnectNumberAsync(tenantId, Id);
+        Snackbar.Add("Line disconnected", Severity.Info);
+        await LoadNumberDataAsync();
+    }
+}
+

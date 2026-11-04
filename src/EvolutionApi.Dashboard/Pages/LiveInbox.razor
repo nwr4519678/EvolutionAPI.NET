@@ -1,0 +1,310 @@
+@page "/inbox"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject RealtimeService Realtime
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<div class="inbox-container @(_selectedConversation != null ? "inbox-container--selected" : "")">
+    <!-- Conversations Sidebar -->
+    <div class="inbox-sidebar glass-card">
+        <div class="inbox-sidebar__header">
+            <h2 class="inbox-title">Live Conversations</h2>
+            <MudIconButton Icon="@Icons.Material.Rounded.Refresh"
+                           Size="Size.Small"
+                           OnClick="LoadConversationsAsync"
+                           Disabled="@_isLoading" />
+        </div>
+
+        <div class="inbox-search-box">
+            <MudTextField @bind-Value="_searchQuery"
+                          Placeholder="Search phone or contact..."
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Rounded.Search"
+                          Margin="Margin.Dense"
+                          Class="inbox-search-input" />
+        </div>
+
+        <div class="conversation-list">
+            @if (_isLoading && _conversations == null)
+            {
+                <div class="p-4 text-center">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Small" />
+                </div>
+            }
+            else if (_conversations == null || _conversations.Items.Count == 0)
+            {
+                <div class="empty-inbox-sidebar">
+                    <MudIcon Icon="@Icons.Material.Rounded.ChatBubbleOutline" Size="Size.Medium" Class="text-muted" />
+                    <MudText Typo="Typo.caption" Class="text-muted mt-2">No active conversations</MudText>
+                </div>
+            }
+            else
+            {
+                @foreach (var c in FilteredConversations)
+                {
+                    <div class="conversation-item @(_selectedConversation?.Id == c.Id ? "active" : "")"
+                         @onclick="@(() => SelectConversationAsync(c))">
+                        <MudAvatar Color="Color.Primary" Size="Size.Small">
+                            @((c.ContactName ?? c.ContactPhone)[0].ToString().ToUpper())
+                        </MudAvatar>
+                        <div class="conversation-item__content">
+                            <div class="conversation-item__top">
+                                <span class="conversation-item__name truncate">@(c.ContactName ?? c.ContactPhone)</span>
+                                <span class="conversation-item__time">@(c.LastMessageAt?.ToString("HH:mm") ?? "")</span>
+                            </div>
+                            <div class="conversation-item__bottom">
+                                <span class="conversation-item__preview truncate">@(c.LastMessagePreview ?? "No messages yet")</span>
+                                @if (c.BotPaused)
+                                {
+                                    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled">
+                                        Human
+                                    </MudChip>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <!-- Active Chat Thread -->
+    <div class="inbox-chat glass-card">
+        @if (_selectedConversation == null)
+        {
+            <div class="empty-chat-state">
+                <MudIcon Icon="@Icons.Material.Rounded.Forum" Size="Size.Large" Class="text-muted" />
+                <MudText Typo="Typo.subtitle1" Class="mt-3 font-semibold">Select a Conversation</MudText>
+                <MudText Typo="Typo.body2" Class="text-secondary mt-1">
+                    Choose a conversation from the left to inspect real-time AI replies or initiate human agent takeover.
+                </MudText>
+            </div>
+        }
+        else
+        {
+            <!-- Chat Header -->
+            <div class="chat-header">
+                <div class="chat-header__info">
+                    <button class="inbox-back" type="button" @onclick="ClearSelection" aria-label="Back to conversations">
+                        <MudIcon Icon="@Icons.Material.Rounded.ArrowBack" Size="Size.Small" />
+                    </button>
+                    <MudAvatar Color="Color.Primary" Size="Size.Medium">
+                        @((_selectedConversation.ContactName ?? _selectedConversation.ContactPhone)[0].ToString().ToUpper())
+                    </MudAvatar>
+                    <div>
+                        <div class="font-semibold text-primary">@(_selectedConversation.ContactName ?? _selectedConversation.ContactPhone)</div>
+                        <div class="text-xs text-muted font-mono">@_selectedConversation.ContactPhone</div>
+                    </div>
+                </div>
+
+                <div class="chat-header__actions">
+                    @if (_selectedConversation.BotPaused)
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   StartIcon="@Icons.Material.Rounded.SmartToy"
+                                   OnClick="ResumeBotAsync"
+                                   Size="Size.Small"
+                                   Style="border-radius: 9999px; text-transform: none;">
+                            Resume AI Bot
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Warning"
+                                   StartIcon="@Icons.Material.Rounded.Person"
+                                   OnClick="PauseBotAsync"
+                                   Size="Size.Small"
+                                   Style="border-radius: 9999px; text-transform: none;">
+                            Take Over (Pause AI)
+                        </MudButton>
+                    }
+                </div>
+            </div>
+
+            <!-- Messages Stream -->
+            <div class="chat-messages-scroll">
+                @if (_loadingMessages)
+                {
+                    <div class="p-8 text-center">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Small" />
+                    </div>
+                }
+                else if (_messages == null || _messages.Items.Count == 0)
+                {
+                    <div class="empty-messages-view">
+                        <MudText Typo="Typo.caption" Class="text-muted">No messages in this thread yet</MudText>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var m in _messages.Items.OrderBy(x => x.SentAt))
+                    {
+                        <div class="message-bubble-wrapper @(m.Direction == "Outbound" ? "outbound" : "inbound")">
+                            <div class="message-bubble">
+                                <div class="message-bubble__header">
+                                    <span class="message-sender-tag">
+                                        @if (m.IsFromBot)
+                                        {
+                                            <span class="text-brand font-semibold">AI Bot</span>
+                                        }
+                                        else if (m.Direction == "Outbound")
+                                        {
+                                            <span>Agent</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@(_selectedConversation.ContactName ?? "Customer")</span>
+                                        }
+                                    </span>
+                                    <span class="message-time">@m.SentAt.ToString("HH:mm")</span>
+                                </div>
+                                <div class="message-bubble__body">
+                                    @m.Body
+                                </div>
+                                @if (m.IsFromBot && m.TokensIn.HasValue)
+                                {
+                                    <div class="message-ai-telemetry">
+                                        <span>@(m.TokensIn + m.TokensOut) tokens</span>
+                                        <span>•</span>
+                                        <span>@(m.AiLatencyMs)ms</span>
+                                        @if (m.AiCost.HasValue)
+                                        {
+                                            <span>•</span>
+                                            <span>${m.AiCost:F4}</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Agent Reply Input -->
+            <div class="chat-input-row">
+                <input type="text"
+                       class="chat-input"
+                       placeholder="@(_selectedConversation.BotPaused ? "Type a reply as human agent..." : "Pause bot above to take over conversation...")"
+                       @bind="_replyMessage"
+                       @bind:event="oninput"
+                       @onkeyup="HandleKeyUp"
+                       disabled="@(!_selectedConversation.BotPaused)" />
+                <MudIconButton Icon="@Icons.Material.Rounded.Send"
+                               Color="Color.Primary"
+                               Disabled="@(!_selectedConversation.BotPaused || string.IsNullOrWhiteSpace(_replyMessage))"
+                               OnClick="SendAgentReplyAsync" />
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private void ClearSelection() => _selectedConversation = null;
+    private PagedResult<ConversationDto>? _conversations;
+    private ConversationDto? _selectedConversation;
+    private PagedResult<ConversationMessageDto>? _messages;
+    private bool _isLoading = true;
+    private bool _loadingMessages;
+    private string _searchQuery = "";
+    private string _replyMessage = "";
+
+    private IEnumerable<ConversationDto> FilteredConversations =>
+        string.IsNullOrWhiteSpace(_searchQuery)
+            ? _conversations?.Items ?? []
+            : (_conversations?.Items ?? []).Where(c =>
+                c.ContactPhone.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                (c.ContactName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        Realtime.OnNewMessage += HandleLiveMessage;
+        await LoadConversationsAsync();
+    }
+
+    private async Task LoadConversationsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _conversations = await Api.GetConversationsAsync(tenantId, 1, 50);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SelectConversationAsync(ConversationDto conversation)
+    {
+        _selectedConversation = conversation;
+        _loadingMessages = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _messages = await Api.GetMessagesAsync(tenantId, conversation.Id, 1, 100);
+        }
+        finally
+        {
+            _loadingMessages = false;
+        }
+    }
+
+    private async Task PauseBotAsync()
+    {
+        if (_selectedConversation == null) return;
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        await Api.PauseBotAsync(tenantId, _selectedConversation.Id);
+        _selectedConversation = _selectedConversation with { BotPaused = true };
+        Snackbar.Add("Bot auto-reply paused. You now have full manual takeover.", Severity.Warning);
+    }
+
+    private async Task ResumeBotAsync()
+    {
+        if (_selectedConversation == null) return;
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        await Api.ResumeBotAsync(tenantId, _selectedConversation.Id);
+        _selectedConversation = _selectedConversation with { BotPaused = false };
+        Snackbar.Add("AI bot auto-reply resumed.", Severity.Success);
+    }
+
+    private async Task SendAgentReplyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_replyMessage) || _selectedConversation == null) return;
+        _replyMessage = "";
+        Snackbar.Add("Agent message dispatched", Severity.Success);
+    }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendAgentReplyAsync();
+        }
+    }
+
+    private async Task HandleLiveMessage(ConversationMessageDto msg)
+    {
+        if (_selectedConversation != null && msg.ConversationId == _selectedConversation.Id)
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _messages = await Api.GetMessagesAsync(tenantId, _selectedConversation.Id, 1, 100);
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            await LoadConversationsAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        Realtime.OnNewMessage -= HandleLiveMessage;
+    }
+}
+

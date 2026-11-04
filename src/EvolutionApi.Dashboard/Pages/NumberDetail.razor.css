@@ -1,0 +1,41 @@
+.number-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.number-header-info {
+    display: flex;
+    align-items: center;
+}
+
+.number-title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.number-header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.settings-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--text-sm);
+    padding: var(--space-2) 0;
+}
+
+@media (max-width: 700px) {
+    .number-header-row { align-items: flex-start; flex-direction: column; gap: var(--space-4); }
+    .number-title-row, .number-header-actions { flex-wrap: wrap; }
+}
+

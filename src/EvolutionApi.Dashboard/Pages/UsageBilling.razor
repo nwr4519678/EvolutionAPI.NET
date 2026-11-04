@@ -1,0 +1,201 @@
+@page "/usage"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Usage & Analytics</h1>
+            <p class="page-subtitle">Inspect raw message telemetry, AI token consumption, and monthly cost allocations</p>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.FileDownload"
+                       OnClick="ExportToCsv"
+                       Disabled="@(_dailyUsage == null || _dailyUsage.Count == 0)"
+                       Style="border-radius: 9999px; text-transform: none;">
+                Export CSV
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Refresh"
+                       OnClick="LoadUsageDataAsync"
+                       Disabled="@_isLoading"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Refresh
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Date Range Filter -->
+    <div class="glass-card p-4 mt-6">
+        <div class="usage-filter-bar">
+            <span class="text-xs text-muted font-semibold uppercase">Analysis Window:</span>
+            <MudButton Variant="@(_days == 7 ? Variant.Filled : Variant.Outlined)"
+                       Size="Size.Small"
+                       OnClick="@(() => SelectWindow(7))">
+                Last 7 Days
+            </MudButton>
+            <MudButton Variant="@(_days == 30 ? Variant.Filled : Variant.Outlined)"
+                       Size="Size.Small"
+                       OnClick="@(() => SelectWindow(30))">
+                Last 30 Days
+            </MudButton>
+            <MudButton Variant="@(_days == 90 ? Variant.Filled : Variant.Outlined)"
+                       Size="Size.Small"
+                       OnClick="@(() => SelectWindow(90))">
+                This Quarter
+            </MudButton>
+        </div>
+    </div>
+
+    @if (_isLoading && _summary == null)
+    {
+        <div class="p-8 text-center mt-6">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            <p class="text-secondary mt-3">Aggregating consumption telemetry...</p>
+        </div>
+    }
+    else if (_summary == null || (_summary.TotalMessages == 0 && _summary.AiCalls == 0))
+    {
+        <div class="glass-card mt-6">
+            <EmptyState Title="No Telemetry Recorded"
+                        Description="No WhatsApp messages or AI token transactions recorded in this date range."
+                        Icon="@Icons.Material.Rounded.BarChart"
+                        ActionText="Back to Numbers"
+                        ActionIcon="@Icons.Material.Rounded.ArrowBack"
+                        ActionHref="/numbers" />
+        </div>
+    }
+    else
+    {
+        <!-- Summary Metric Cards -->
+        <div class="metric-grid mt-6">
+            <MetricCard Label="Total Messages"
+                        Value="@_summary.TotalMessages.ToString("N0")"
+                        Icon="@Icons.Material.Rounded.Chat"
+                        Color="brand"
+                        ChangeText="@($"{_summary.MessagesIn:N0} in / {_summary.MessagesOut:N0} out")"
+                        IsPositiveChange="true" />
+
+            <MetricCard Label="AI Token Inbound"
+                        Value="@_summary.TokensIn.ToString("N0")"
+                        Icon="@Icons.Material.Rounded.Input"
+                        Color="purple"
+                        ChangeText="Prompt tokens"
+                        IsPositiveChange="true" />
+
+            <MetricCard Label="AI Token Outbound"
+                        Value="@_summary.TokensOut.ToString("N0")"
+                        Icon="@Icons.Material.Rounded.Output"
+                        Color="blue"
+                        ChangeText="Completion tokens"
+                        IsPositiveChange="true" />
+
+            <MetricCard Label="Total AI Cost"
+                        Value="@($"${_summary.TotalCost:F2}")"
+                        Icon="@Icons.Material.Rounded.AttachMoney"
+                        Color="cyan"
+                        ChangeText="@($"{_summary.AiCalls:N0} total AI calls")"
+                        IsPositiveChange="true" />
+        </div>
+
+        <!-- Daily Rollup Breakdown Table -->
+        <div class="glass-card mt-6">
+            <div class="p-4 border-b">
+                <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Daily Aggregates</MudText>
+            </div>
+            <MudTable Items="@_dailyUsage" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Inbound</MudTh>
+                    <MudTh>Outbound</MudTh>
+                    <MudTh>AI Calls</MudTh>
+                    <MudTh>Tokens In</MudTh>
+                    <MudTh>Tokens Out</MudTh>
+                    <MudTh Style="text-align: right;">Cost</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Date">
+                        <span class="font-semibold text-primary">@context.Date.ToString("yyyy-MM-dd")</span>
+                    </MudTd>
+                    <MudTd DataLabel="Inbound">@context.MessagesIn.ToString("N0")</MudTd>
+                    <MudTd DataLabel="Outbound">@context.MessagesOut.ToString("N0")</MudTd>
+                    <MudTd DataLabel="AI Calls">@context.AiCalls.ToString("N0")</MudTd>
+                    <MudTd DataLabel="Tokens In">@context.TokensIn.ToString("N0")</MudTd>
+                    <MudTd DataLabel="Tokens Out">@context.TokensOut.ToString("N0")</MudTd>
+                    <MudTd DataLabel="Cost" Style="text-align: right;">
+                        <span class="font-mono text-brand font-semibold">${context.TotalCost:F4}</span>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </div>
+    }
+</div>
+
+@code {
+    private UsageSummaryDto? _summary;
+    private IReadOnlyList<UsageDailyDto>? _dailyUsage;
+    private bool _isLoading = true;
+    private int _days = 30;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsageDataAsync();
+    }
+
+    private async Task SelectWindow(int days)
+    {
+        _days = days;
+        await LoadUsageDataAsync();
+    }
+
+    private async Task LoadUsageDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var end = DateOnly.FromDateTime(DateTime.UtcNow);
+            var start = end.AddDays(-_days);
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+
+            _summary = await Api.GetUsageSummaryAsync(tenantId, start, end);
+            _dailyUsage = await Api.GetUsageDailyAsync(tenantId, start, end);
+
+            if (_summary == null && _dailyUsage != null && _dailyUsage.Count > 0)
+            {
+                _summary = new UsageSummaryDto(
+                    tenantId, start, end,
+                    _dailyUsage.Sum(x => x.MessagesIn + x.MessagesOut),
+                    _dailyUsage.Sum(x => x.MessagesIn),
+                    _dailyUsage.Sum(x => x.MessagesOut),
+                    _dailyUsage.Sum(x => x.AiCalls),
+                    _dailyUsage.Sum(x => x.TokensIn),
+                    _dailyUsage.Sum(x => x.TokensOut),
+                    _dailyUsage.Sum(x => x.TotalCost),
+                    0, _dailyUsage.Count, 0);
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ExportToCsv()
+    {
+        if (_dailyUsage == null || _dailyUsage.Count == 0) return;
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Date,InboundMessages,OutboundMessages,AiCalls,TokensIn,TokensOut,TotalCost");
+        foreach (var r in _dailyUsage)
+        {
+            csv.AppendLine($"{r.Date:yyyy-MM-dd},{r.MessagesIn},{r.MessagesOut},{r.AiCalls},{r.TokensIn},{r.TokensOut},{r.TotalCost:F4}");
+        }
+        Snackbar.Add("Telemetry exported to CSV successfully", Severity.Success);
+    }
+}
+

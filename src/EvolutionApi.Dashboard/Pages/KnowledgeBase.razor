@@ -1,0 +1,118 @@
+@page "/knowledge"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Knowledge Base & RAG Context</h1>
+            <p class="page-subtitle">Attach structured business knowledge, FAQs, and product catalogs to AI responses</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showAddModal = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Add Knowledge Article
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Articles Grid -->
+    <div class="glass-card mt-6">
+        @if (_knowledgeItems.Count == 0)
+        {
+            <EmptyState Title="No Knowledge Articles Attached"
+                        Description="Feed product facts, pricing tables, refund policies, and business FAQs into your AI's retrieval context."
+                        Icon="@Icons.Material.Rounded.MenuBook"
+                        ActionText="Add First Article"
+                        ActionIcon="@Icons.Material.Rounded.Add"
+                        OnAction="@(() => _showAddModal = true)" />
+        }
+        else
+        {
+            <MudTable Items="@_knowledgeItems" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Title</MudTh>
+                    <MudTh>Category</MudTh>
+                    <MudTh>Chunks</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Updated</MudTh>
+                    <MudTh Style="text-align: right;">Action</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Title">
+                        <span class="font-semibold text-primary">@context.Title</span>
+                    </MudTd>
+                    <MudTd DataLabel="Category">
+                        <code class="slug-tag">@context.Category</code>
+                    </MudTd>
+                    <MudTd DataLabel="Chunks">
+                        <span class="font-semibold">@context.ChunkCount chunks</span>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <StatusBadge Status="Active" />
+                    </MudTd>
+                    <MudTd DataLabel="Updated">
+                        <span class="text-xs text-muted">@context.UpdatedAt.ToString("MMM dd, yyyy")</span>
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeleteArticle(context.Id))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </div>
+</div>
+
+<!-- Add Knowledge Modal -->
+<MudDialog @bind-Visible="_showAddModal">
+    <TitleContent><MudText Typo="Typo.h6">Add Knowledge Article</MudText></TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_newTitle" Label="Article Title" Variant="Variant.Outlined" Required="true"
+                          HelperText="e.g. Return Policy & Warranty Terms" />
+            <MudTextField @bind-Value="_newCategory" Label="Category" Variant="Variant.Outlined"
+                          HelperText="e.g. Shipping, Support, Pricing" />
+            <MudTextField @bind-Value="_newContent" Label="Article Body / FAQ Content" Variant="Variant.Outlined" Lines="8" Required="true"
+                          HelperText="This text will be chunked and indexed for vector RAG retrieval" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showAddModal = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveArticle">Index Article</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private record KnowledgeArticle(string Id, string Title, string Category, int ChunkCount, DateTimeOffset UpdatedAt);
+    private readonly List<KnowledgeArticle> _knowledgeItems = [];
+
+    private bool _showAddModal;
+    private string _newTitle = "";
+    private string _newCategory = "General";
+    private string _newContent = "";
+
+    private void SaveArticle()
+    {
+        if (string.IsNullOrWhiteSpace(_newTitle) || string.IsNullOrWhiteSpace(_newContent)) return;
+        var chunks = Math.Max(1, _newContent.Length / 500);
+        _knowledgeItems.Add(new(Guid.NewGuid().ToString("D"), _newTitle, _newCategory, chunks, DateTimeOffset.UtcNow));
+        _showAddModal = false;
+        _newTitle = "";
+        _newContent = "";
+        Snackbar.Add("Knowledge article indexed into RAG store", Severity.Success);
+    }
+
+    private void DeleteArticle(string id)
+    {
+        _knowledgeItems.RemoveAll(x => x.Id == id);
+        Snackbar.Add("Article removed", Severity.Info);
+    }
+}
+

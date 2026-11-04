@@ -1,8 +1,12 @@
-@inject EvolutionApiClient Api
-@inject DashboardState State
+@using EvolutionApi.Dashboard.Services
+@using EvolutionApi.Dashboard.Pages
+@using EvolutionApi.Dashboard.Theme
+@inject ApiClient Api
+@inject AppState State
 @implements IDisposable
 
-<MudThemeProvider />
+<div class="dashboard-theme" data-theme="@(State.IsDarkMode ? "dark" : "light")">
+<MudThemeProvider Theme="@(State.IsDarkMode ? AppTheme.DarkTheme : AppTheme.LightTheme)" IsDarkMode="@State.IsDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -11,37 +15,66 @@
     <ChildContent>
         @if (!_sessionChecked)
         {
-            <div class="startup-screen"><div class="startup-mark">E</div><MudProgressCircular Indeterminate="true" Color="Color.Primary" /><p>Checking manager session…</p></div>
-        }
-        else if (!State.IsManagerAuthenticated)
-        {
-            <EvolutionApi.Dashboard.Pages.Settings />
+            <div class="startup-screen">
+                <div class="startup-mark">W</div>
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p style="margin-top: 1rem; color: var(--text-secondary);">Initializing platform session...</p>
+            </div>
         }
         else
         {
             <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
                 <Found Context="routeData">
-                    <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                    @if (State.IsAuthenticated || routeData.PageType == typeof(Pages.Login))
+                    {
+                        <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)" />
+                    }
+                    else
+                    {
+                        <Login />
+                    }
                     <FocusOnNavigate RouteData="@routeData" Selector="h1" />
                 </Found>
             </Router>
         }
     </ChildContent>
     <ErrorContent Context="exception">
-        <main class="startup-screen"><div class="startup-mark">!</div><MudText Typo="Typo.h5">Dashboard could not start</MudText><MudText Class="muted-text">@exception.Message</MudText><MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/">Reload dashboard</MudButton></main>
+        <main class="startup-screen">
+            <div class="startup-mark" style="background: var(--color-accent-rose);">!</div>
+            <MudText Typo="Typo.h5" Class="mt-3">Application Error</MudText>
+            <MudText Class="text-secondary mt-1">@exception.Message</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/" Class="mt-4">
+                Reload Platform
+            </MudButton>
+        </main>
     </ErrorContent>
 </ErrorBoundary>
+</div>
 
 @code {
     private bool _sessionChecked;
+
     protected override async Task OnInitializedAsync()
     {
-        State.Changed += OnStateChanged;
-        try { State.SetManagerAuthenticated(await Api.CheckManagerSessionAsync()); }
-        catch { State.SetManagerAuthenticated(false); }
-        _sessionChecked = true;
+        State.OnChange += OnStateChanged;
+        try
+        {
+            var isAuth = await Api.CheckSessionAsync();
+            if (isAuth)
+            {
+                State.SetAuthenticated("admin", "admin@platform.local", "SuperAdmin");
+            }
+        }
+        catch
+        {
+            State.SetUnauthenticated();
+        }
+        finally
+        {
+            _sessionChecked = true;
+        }
     }
 
     private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
-    public void Dispose() => State.Changed -= OnStateChanged;
+    public void Dispose() => State.OnChange -= OnStateChanged;
 }

@@ -1,0 +1,27 @@
+@using EvolutionApi.Dashboard.Services
+@inject AppState AppState
+@inject NavigationManager Nav
+@implements IDisposable
+
+@* Navigation Group with optional collapsible header label *@
+<div class="nav-group @(IsCollapsed ? "nav-group--mini" : "")" role="listitem">
+    @if (!IsCollapsed && !string.IsNullOrEmpty(Label))
+    {
+        <div class="nav-group__label">
+            <span>@Label</span>
+        </div>
+    }
+    <div class="nav-group__items">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public bool IsCollapsed { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    public void Dispose() { }
+}
+

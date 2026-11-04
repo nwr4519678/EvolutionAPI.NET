@@ -1,0 +1,30 @@
+@using EvolutionApi.Dashboard.Services
+@inject NavigationManager Nav
+@inject AppState AppState
+
+<div class="nav-item-wrap">
+<NavLink class="@GetCssClass()" href="@Href" Match="@(Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="AppState.CloseMobileNavigation" aria-label="@Label" title="@Label">
+    <span class="nav-item__icon"><MudIcon Icon="@Icon" Size="Size.Small" /></span>
+    @if (!IsCollapsed)
+    {
+        <span class="nav-item__label">@Label</span>
+        @if (Badge.HasValue && Badge.Value > 0)
+        {
+            <span class="nav-item__badge">@Badge.Value</span>
+        }
+    }
+</NavLink>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required string Href { get; set; }
+    [Parameter, EditorRequired] public required string Label { get; set; }
+    [Parameter, EditorRequired] public required string Icon { get; set; }
+    [Parameter] public bool Exact { get; set; }
+    [Parameter] public bool IsCollapsed { get; set; }
+    [Parameter] public int? Badge { get; set; }
+
+    private string GetCssClass() =>
+        $"nav-item {(IsCollapsed ? "nav-item--mini" : "")}";
+}
+

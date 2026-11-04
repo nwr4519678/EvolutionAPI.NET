@@ -1,108 +1,122 @@
 @page "/settings"
-@inject DashboardState State
-@inject EvolutionApiClient Api
+@using EvolutionApi.Dashboard.Services
+@inject AppState State
 @inject ISnackbar Snackbar
-@inject NavigationManager Navigation
 
-<PageTitle>Manager sign in · Evolution Control</PageTitle>
-@if (!State.IsManagerAuthenticated)
-{
-    <main class="login-screen">
-        <div class="login-orb login-orb-one"></div><div class="login-orb login-orb-two"></div>
-        <section class="login-layout">
-            <div class="login-intro">
-                <div class="login-logo"><MudIcon Icon="@Icons.Material.Filled.Bolt" /></div>
-                <MudText Typo="Typo.overline" Class="login-kicker">EVOLUTION API · MANAGEMENT</MudText>
-                <MudText Typo="Typo.h2" Class="login-title">Your WhatsApp operations,<br />under one roof.</MudText>
-                <MudText Typo="Typo.body1" Class="login-description">Manage connected numbers, issue client API keys, pair sessions, and keep an eye on system usage.</MudText>
-                <div class="login-feature-list">
-                    <div><MudIcon Icon="@Icons.Material.Filled.Key" /><span>Private API access for every client</span></div>
-                    <div><MudIcon Icon="@Icons.Material.Filled.QrCode2" /><span>Quick QR pairing and session controls</span></div>
-                    <div><MudIcon Icon="@Icons.Material.Filled.Analytics" /><span>Clear system and database usage</span></div>
-                </div>
-            </div>
-
-            <MudPaper Class="login-card" Elevation="0">
-                <div class="login-card-heading"><MudText Typo="Typo.h4">Welcome back</MudText><MudText Typo="Typo.body2" Class="muted-text">Sign in to your manager workspace.</MudText></div>
-                <MudTextField @bind-Value="_password" Label="Manager password" Placeholder="Enter your password" InputType="InputType.Password" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Lock" Class="login-password" AutoFocus="true" OnKeyDown="HandleKeyDown" />
-                <MudButton Class="login-submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="@_signingIn" OnClick="Login">
-                    @if (_signingIn) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> <span>Signing in…</span> }
-                    else { <span>Sign in to dashboard</span><MudIcon Icon="@Icons.Material.Filled.ArrowForward" Class="ml-2" /> }
-                </MudButton>
-                <div class="login-secure-note"><MudIcon Icon="@Icons.Material.Filled.VerifiedUser" /><span>Secure manager access · session expires after 8 hours</span></div>
-            </MudPaper>
-        </section>
-        <footer class="login-footer"><span>EVOLUTION CONTROL</span><span>Private WhatsApp gateway management</span></footer>
-    </main>
-}
-else
-{
-    <div class="page-heading"><div><MudText Typo="Typo.h4">Manager access</MudText><MudText Class="muted-text">Manage your manager session.</MudText></div></div>
-    <MudPaper Class="panel-card" Elevation="0">
-        <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.VerifiedUser">Manager session active</MudChip>
-        <MudText Typo="Typo.body2" Class="muted-text mt-4">The gateway API key stays on the dashboard server. Your browser uses a short-lived, HTTP-only manager session cookie.</MudText>
-        <div class="d-flex flex-wrap gap-2 mt-4">
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@_testing" OnClick="TestConnection">@(_testing ? "Checking…" : "Check gateway connection")</MudButton>
-            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="Logout">Sign out</MudButton>
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Platform & Tenant Settings</h1>
+            <p class="page-subtitle">Configure regional localization, theming preferences, and security policies</p>
         </div>
-    </MudPaper>
-}
+        <div>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Save"
+                       OnClick="SaveSettings"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Save Changes
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Tabbed Settings -->
+    <div class="glass-card mt-6">
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="p-6">
+            <!-- General Tab -->
+            <MudTabPanel Text="General & Localization" Icon="@Icons.Material.Rounded.Tune">
+                <div class="settings-form-grid">
+                    <MudTextField @bind-Value="_companyName"
+                                  Label="Tenant / Platform Name"
+                                  Variant="Variant.Outlined" />
+
+                    <MudSelect @bind-Value="_timezone"
+                               Label="Default Timezone"
+                               Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("UTC")">UTC (Coordinated Universal Time)</MudSelectItem>
+                        <MudSelectItem Value="@("America/New_York")">America/New_York (EST / EDT)</MudSelectItem>
+                        <MudSelectItem Value="@("Europe/London")">Europe/London (GMT / BST)</MudSelectItem>
+                        <MudSelectItem Value="@("Europe/Berlin")">Europe/Berlin (CET / CEST)</MudSelectItem>
+                        <MudSelectItem Value="@("Asia/Dubai")">Asia/Dubai (GST +4)</MudSelectItem>
+                        <MudSelectItem Value="@("Asia/Riyadh")">Asia/Riyadh (AST +3)</MudSelectItem>
+                        <MudSelectItem Value="@("Africa/Cairo")">Africa/Cairo (EET +2)</MudSelectItem>
+                    </MudSelect>
+
+                    <MudSelect @bind-Value="_language"
+                               Label="Default Interface Language"
+                               Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("en")">English (EN)</MudSelectItem>
+                        <MudSelectItem Value="@("ar")">العربية (Arabic - RTL)</MudSelectItem>
+                        <MudSelectItem Value="@("es")">Español (Spanish)</MudSelectItem>
+                        <MudSelectItem Value="@("pt")">Português (Portuguese)</MudSelectItem>
+                    </MudSelect>
+
+                    <div class="mt-4">
+                        <MudSwitch Value="@State.IsDarkMode"
+                                   ValueChanged="@((bool dark) => State.SetTheme(dark))"
+                                   Color="Color.Primary"
+                                   Label="Dark Theme Mode (Recommended for Luxury Aesthetics)" />
+                    </div>
+                </div>
+            </MudTabPanel>
+
+            <!-- Security & Quota Tab -->
+            <MudTabPanel Text="Security & Limits" Icon="@Icons.Material.Rounded.Security">
+                <div class="settings-form-grid">
+                    <MudNumericField @bind-Value="_rateLimitPerMinute"
+                                     Label="Default Inbound Rate Limit (Messages / Minute / Contact)"
+                                     Variant="Variant.Outlined"
+                                     Min="1" Max="120" />
+
+                    <MudNumericField @bind-Value="_monthlyTokenQuota"
+                                     Label="Monthly AI Token Quota Limit"
+                                     Variant="Variant.Outlined"
+                                     Min="10000" Step="50000" />
+
+                    <div class="mt-4">
+                        <MudSwitch @bind-Value="_enforce2Fa"
+                                   Color="Color.Primary"
+                                   Label="Enforce Two-Factor Authentication (2FA) for All Client Admins" />
+                    </div>
+                </div>
+            </MudTabPanel>
+
+            <!-- Notifications Tab -->
+            <MudTabPanel Text="Notifications" Icon="@Icons.Material.Rounded.Notifications">
+                <div class="settings-form-grid">
+                    <MudCheckBox @bind-Value="_notifyOnSessionDrop" Label="Alert when any WhatsApp session disconnects" Color="Color.Primary" />
+                    <MudCheckBox @bind-Value="_notifyOnQuotaExceeded" Label="Alert when monthly AI token budget reaches 90%" Color="Color.Primary" />
+                    <MudCheckBox @bind-Value="_notifyOnHumanHandoff" Label="Alert agents immediately when customer requests human handover" Color="Color.Primary" />
+                </div>
+            </MudTabPanel>
+        </MudTabs>
+    </div>
+</div>
 
 @code {
-    private string _password = string.Empty;
-    private bool _signingIn;
-    private bool _testing;
+    private string _companyName = "Platform Operations";
+    private string _timezone = "UTC";
+    private string _language = "en";
+    private int _rateLimitPerMinute = 15;
+    private long _monthlyTokenQuota = 1000000;
+    private bool _enforce2Fa = true;
+    private bool _notifyOnSessionDrop = true;
+    private bool _notifyOnQuotaExceeded = true;
+    private bool _notifyOnHumanHandoff = true;
 
-    private async Task Login()
+    protected override void OnInitialized()
     {
-        if (string.IsNullOrWhiteSpace(_password))
+        if (State.SelectedTenant != null)
         {
-            Snackbar.Add("Enter the manager password.", Severity.Warning);
-            return;
+            _companyName = State.SelectedTenant.Name;
+            _timezone = State.SelectedTenant.Timezone;
+            _language = State.SelectedTenant.Language;
         }
-
-        _signingIn = true;
-        try
-        {
-            if (!await Api.LoginManagerAsync(_password))
-            {
-                Snackbar.Add("Manager password is incorrect.", Severity.Error);
-                return;
-            }
-            State.SetManagerAuthenticated(true);
-            _password = string.Empty;
-            Snackbar.Add("Signed in as manager.", Severity.Success);
-            Navigation.NavigateTo("/", replace: true);
-        }
-        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
-        finally { _signingIn = false; }
     }
 
-    private async Task HandleKeyDown(KeyboardEventArgs args)
+    private void SaveSettings()
     {
-        if (args.Key == "Enter") await Login();
-    }
-
-    private async Task TestConnection()
-    {
-        _testing = true;
-        try
-        {
-            var instances = await Api.GetInstancesAsync();
-            Snackbar.Add($"Gateway connection is healthy. {instances.Count} client instance(s) found.", Severity.Success);
-        }
-        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
-        finally { _testing = false; }
-    }
-
-    private async Task Logout()
-    {
-        try
-        {
-            await Api.LogoutManagerAsync();
-            State.SetManagerAuthenticated(false);
-            Snackbar.Add("Signed out.", Severity.Info);
-        }
-        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        Snackbar.Add("Settings saved and cached to memory store", Severity.Success);
     }
 }

@@ -1,41 +1,57 @@
-@inherits LayoutComponentBase
+@using EvolutionApi.Dashboard.Services
+@using EvolutionApi.Dashboard.Theme
+@inject AppState AppState
+@inject RealtimeService Realtime
+@inject NavigationManager Nav
 @implements IDisposable
 
-<MudLayout Class="@($"dashboard-shell {(_darkMode ? "dark-mode" : string.Empty)}")">
-    <MudAppBar Elevation="0" Color="Color.Transparent" Class="dashboard-appbar">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" />
-        <MudText Typo="Typo.h6" Class="brand-title">Evolution <span>Control</span></MudText>
-        <MudSpacer />
-        <MudChip T="string" Size="Size.Small" Color="@(State.IsManagerAuthenticated ? Color.Success : Color.Warning)" Variant="Variant.Outlined">
-            @(State.IsManagerAuthenticated ? "Manager signed in" : "Manager sign in")
-        </MudChip>
-        <MudIconButton Icon="@(_darkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)" Color="Color.Inherit" aria-label="Toggle dark mode" OnClick="ToggleTheme" />
-    </MudAppBar>
+<MudLayout>
+    @if (AppState.IsAuthenticated)
+    {
+        <div class="app-frame">
+        <!-- Premium Sidebar -->
+        <AppSidebar />
 
-    <MudDrawer @bind-Open="_drawerOpen" Elevation="1" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md" Class="dashboard-drawer">
-        <div class="drawer-brand"><MudIcon Icon="@Icons.Material.Filled.Bolt" Color="Color.Primary" /><MudText Typo="Typo.subtitle1">EVOLUTION API</MudText></div>
-        <NavMenu />
-        <MudSpacer />
-        <MudDivider />
-        <MudText Typo="Typo.caption" Class="pa-4 muted-text">WhatsApp Web gateway · .NET 10</MudText>
-    </MudDrawer>
+        <!-- Top Bar -->
+        <AppTopBar />
 
-    <MudMainContent Class="dashboard-content">
-        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4 pa-md-8">
-            @Body
-        </MudContainer>
-    </MudMainContent>
+        <!-- Main Content -->
+        <MudMainContent Class="@GetMainClass()">
+            <div class="page-wrapper page-enter">
+                <CascadingValue Value="this">
+                    @Body
+                </CascadingValue>
+            </div>
+        </MudMainContent>
+        </div>
+    }
+    else
+    {
+        @Body
+    }
 </MudLayout>
 
 @code {
-    [Inject] private DashboardState State { get; set; } = null!;
-    private bool _drawerOpen = true;
-    private bool _darkMode;
+    [Parameter] public RenderFragment? Body { get; set; }
 
-    protected override void OnInitialized() => State.Changed += OnStateChanged;
-    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnStateChanged;
+    }
 
-    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
-    private void ToggleTheme() => _darkMode = !_darkMode;
-    public void Dispose() => State.Changed -= OnStateChanged;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Connect to SignalR for real-time updates
+        try { await Realtime.ConnectAsync(); }
+        catch { /* graceful degradation - real-time features won't be available */ }
+    }
+
+    private string GetMainClass() =>
+        $"main-content {(AppState.SidebarCollapsed ? "sidebar-collapsed" : "")}";
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => AppState.OnChange -= OnStateChanged;
 }
+

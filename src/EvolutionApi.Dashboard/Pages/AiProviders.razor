@@ -1,0 +1,300 @@
+@page "/ai-providers"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">AI Providers & Endpoints</h1>
+            <p class="page-subtitle">Configure LLM intelligence providers, fallback priority, and token pricing</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showCreateDialog = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Add AI Provider
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Provider Cards Grid -->
+    <div class="glass-card mt-6">
+        @if (_isLoading && _providers == null)
+        {
+            <div class="p-8 text-center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="text-secondary mt-3">Loading AI providers...</p>
+            </div>
+        }
+        else if (_providers == null || _providers.Count == 0)
+        {
+            <EmptyState Title="No AI Providers Configured"
+                        Description="No AI engine configured. Add OpenAI, Anthropic Claude, Google Gemini, Azure OpenAI, or a self-hosted vLLM/Ollama endpoint."
+                        Icon="@Icons.Material.Rounded.Psychology"
+                        ActionText="Configure AI Provider"
+                        ActionIcon="@Icons.Material.Rounded.Add"
+                        OnAction="@(() => _showCreateDialog = true)" />
+        }
+        else
+        {
+            <MudTable Items="@_providers" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Provider Name</MudTh>
+                    <MudTh>Engine Type</MudTh>
+                    <MudTh>Default Model</MudTh>
+                    <MudTh>Pricing (In / Out per 1K)</MudTh>
+                    <MudTh>Priority</MudTh>
+                    <MudTh>State</MudTh>
+                    <MudTh Style="text-align: right;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <div class="provider-cell">
+                            <MudIcon Icon="@GetProviderIcon(context.ProviderType)" Color="Color.Primary" Size="Size.Small" />
+                            <span class="font-semibold text-primary">@context.Name</span>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="Type">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                            @context.ProviderType
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Model">
+                        <code class="slug-tag">@context.DefaultModel</code>
+                    </MudTd>
+                    <MudTd DataLabel="Pricing">
+                        <span class="text-xs font-mono">${context.PricePerKInputTokens:F4} / ${context.PricePerKOutputTokens:F4}</span>
+                    </MudTd>
+                    <MudTd DataLabel="Priority">
+                        <span class="font-semibold">#@context.Priority</span>
+                    </MudTd>
+                    <MudTd DataLabel="State">
+                        <StatusBadge Status="@(context.IsEnabled ? "Active" : "Suspended")" />
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        <MudButton Variant="Variant.Outlined"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Rounded.Bolt"
+                                   OnClick="@(() => OpenTestDialog(context))"
+                                   Style="border-radius: var(--radius-sm); text-transform: none;">
+                            Test
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </div>
+</div>
+
+<!-- Test Provider Dialog -->
+<MudDialog @bind-Visible="_showTestDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Test AI Connection: @_testProvider?.Name</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_testPrompt"
+                          Label="Test Message"
+                          Variant="Variant.Outlined"
+                          Lines="2" />
+
+            @if (_testingInProgress)
+            {
+                <div class="p-4 text-center">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Small" />
+                    <span class="text-xs text-secondary ml-2">Pinging provider endpoint...</span>
+                </div>
+            }
+            else if (_testResult != null)
+            {
+                <div class="test-result-box @(_testResult.Success ? "success" : "error")">
+                    <div class="test-result-header">
+                        <span class="font-semibold">@(_testResult.Success ? "Connection Healthy" : "Connection Failed")</span>
+                        <span class="text-xs font-mono">@_testResult.LatencyMs ms</span>
+                    </div>
+                    <div class="test-result-body mt-2">
+                        @if (_testResult.Success)
+                        {
+                            <span class="text-xs text-secondary">@_testResult.Response</span>
+                        }
+                        else
+                        {
+                            <span class="text-xs text-rose">@_testResult.ErrorMessage</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showTestDialog = false)">Close</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="RunConnectionTestAsync"
+                   Disabled="@_testingInProgress">
+            Send Test Request
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- Create Provider Dialog -->
+<MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Add AI Provider</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_newName"
+                          Label="Provider Label"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          HelperText="e.g. 'Production Claude 3.5' or 'Primary OpenAI 4o'" />
+
+            <MudSelect @bind-Value="_newType"
+                       Label="Provider Type"
+                       Variant="Variant.Outlined">
+                <MudSelectItem Value="@("OpenAI")">OpenAI (Direct)</MudSelectItem>
+                <MudSelectItem Value="@("Anthropic")">Anthropic (Claude)</MudSelectItem>
+                <MudSelectItem Value="@("Gemini")">Google Gemini</MudSelectItem>
+                <MudSelectItem Value="@("AzureOpenAI")">Azure OpenAI</MudSelectItem>
+                <MudSelectItem Value="@("OpenAICompatible")">Custom OpenAI-Compatible (vLLM / Ollama)</MudSelectItem>
+            </MudSelect>
+
+            @if (_newType == "OpenAICompatible" || _newType == "AzureOpenAI")
+            {
+                <MudTextField @bind-Value="_newBaseUrl"
+                              Label="Custom Base URL"
+                              Variant="Variant.Outlined"
+                              HelperText="e.g. https://api.together.xyz/v1 or http://localhost:11434/v1" />
+            }
+
+            <MudTextField @bind-Value="_newApiKey"
+                          Label="API Secret Key"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password"
+                          Required="true"
+                          HelperText="Key will be encrypted with ASP.NET Core Data Protection at rest" />
+
+            <MudTextField @bind-Value="_newModel"
+                          Label="Default Model Name"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          HelperText="e.g. gpt-4o, claude-3-5-sonnet-20241022, gemini-2.0-flash" />
+
+            <div class="form-row-2">
+                <MudNumericField @bind-Value="_newTemperature"
+                                 Label="Temperature"
+                                 Variant="Variant.Outlined"
+                                 Min="0.0" Max="2.0" Step="0.1" />
+
+                <MudNumericField @bind-Value="_newMaxTokens"
+                                 Label="Max Response Tokens"
+                                 Variant="Variant.Outlined"
+                                 Min="128" Max="16384" Step="256" />
+            </div>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCreateDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="CreateProviderAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_newName) || string.IsNullOrWhiteSpace(_newModel))">
+            Save Provider
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<AiProviderDto>? _providers;
+    private bool _isLoading = true;
+
+    // Create
+    private bool _showCreateDialog;
+    private string _newName = "";
+    private string _newType = "OpenAI";
+    private string? _newBaseUrl;
+    private string _newApiKey = "";
+    private string _newModel = "gpt-4o";
+    private double _newTemperature = 0.7;
+    private int _newMaxTokens = 2048;
+
+    // Test
+    private bool _showTestDialog;
+    private AiProviderDto? _testProvider;
+    private string _testPrompt = "Hello! Please reply in 10 words or less.";
+    private bool _testingInProgress;
+    private TestAiProviderResult? _testResult;
+
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProvidersAsync();
+    }
+
+    private async Task LoadProvidersAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id;
+            _providers = await Api.GetAiProvidersAsync(tenantId);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OpenTestDialog(AiProviderDto provider)
+    {
+        _testProvider = provider;
+        _testResult = null;
+        _showTestDialog = true;
+    }
+
+    private async Task RunConnectionTestAsync()
+    {
+        if (_testProvider == null) return;
+        _testingInProgress = true;
+        try
+        {
+            _testResult = await Api.TestAiProviderAsync(new TestAiProviderRequest(_testProvider.Id, _testPrompt));
+        }
+        finally
+        {
+            _testingInProgress = false;
+        }
+    }
+
+    private async Task CreateProviderAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id;
+        var created = await Api.CreateAiProviderAsync(new CreateAiProviderRequest(
+            tenantId, _newName, _newType, _newBaseUrl, _newApiKey, _newModel, _newTemperature, _newMaxTokens));
+
+        if (created != null)
+        {
+            Snackbar.Add($"AI Provider {created.Name} configured successfully", Severity.Success);
+            _showCreateDialog = false;
+            _newName = "";
+            _newApiKey = "";
+            await LoadProvidersAsync();
+        }
+    }
+
+    private string GetProviderIcon(string type) => type switch
+    {
+        "Anthropic" => Icons.Material.Rounded.PsychologyAlt,
+        "Gemini" => Icons.Material.Rounded.AutoAwesome,
+        "AzureOpenAI" => Icons.Material.Rounded.CloudQueue,
+        _ => Icons.Material.Rounded.Psychology
+    };
+}
+

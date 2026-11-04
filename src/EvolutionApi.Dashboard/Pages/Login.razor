@@ -1,0 +1,92 @@
+@page "/login"
+@layout Layout.MainLayout
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject NavigationManager Nav
+
+<main class="login-shell">
+    <section class="login-story" aria-label="About the platform">
+        <div class="story-inner">
+            <div class="brand"><span class="brand-symbol"><MudIcon Icon="@Icons.Custom.Brands.WhatsApp" /></span><span>Evolution <strong>Control</strong></span></div>
+            <div class="story-content">
+                <div class="eyebrow"><span></span> YOUR CONVERSATIONS, CONNECTED</div>
+                <h1>One place for<br />every <em>conversation.</em></h1>
+                <p>Bring your WhatsApp connections, conversations, and automation together in one clear workspace.</p>
+                <div class="story-visual" aria-hidden="true">
+                    <div class="visual-top"><div class="visual-avatar"><MudIcon Icon="@Icons.Material.Rounded.Forum" /></div><div><strong>Your workspace</strong><small>Conversations at a glance</small></div><span class="visual-dots">•••</span></div>
+                    <div class="visual-line visual-line-short"></div>
+                    <div class="visual-message">Everything your team needs,<br />right where you need it.</div>
+                    <div class="visual-reply">Ready to get started <span>↗</span></div>
+                </div>
+            </div>
+            <div class="story-footer"><span>WHATSAPP MANAGEMENT PLATFORM</span><span>BUILT FOR BETTER CONVERSATIONS</span></div>
+        </div>
+    </section>
+
+    <section class="login-form-side" aria-labelledby="login-heading">
+        <div class="mobile-brand"><span class="brand-symbol"><MudIcon Icon="@Icons.Custom.Brands.WhatsApp" /></span><span>Evolution <strong>Control</strong></span></div>
+        <div class="login-content">
+            <div class="login-icon"><MudIcon Icon="@Icons.Material.Rounded.Lock" /></div>
+            <div class="form-eyebrow">WELCOME BACK</div>
+            <h2 id="login-heading">Sign in to your<br />workspace<span>.</span></h2>
+            <p class="login-description">Enter your manager password to access the dashboard.</p>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="login-error" role="alert">@_errorMessage</div>
+            }
+
+            <EditForm Model="@_model" OnSubmit="HandleLogin" class="login-form">
+                <label for="manager-password">Manager password</label>
+                <div class="password-wrap">
+                    <input id="manager-password" type="@(_showPassword ? "text" : "password")" @bind="_model.Password" @bind:event="oninput" placeholder="Enter your password" autocomplete="current-password" required disabled="@_isLoading" />
+                    <button class="password-toggle" type="button" aria-label="@(_showPassword ? "Hide password" : "Show password")" aria-pressed="@_showPassword" @onclick="() => _showPassword = !_showPassword"><MudIcon Icon="@(_showPassword ? Icons.Material.Rounded.VisibilityOff : Icons.Material.Rounded.Visibility)" Size="Size.Small" /></button>
+                </div>
+                <button class="login-submit" type="submit" disabled="@_isLoading">
+                    <span>@(_isLoading ? "Signing in…" : "Sign in to dashboard")</span><span aria-hidden="true">↗</span>
+                </button>
+            </EditForm>
+            <div class="login-note"><MudIcon Icon="@Icons.Material.Rounded.Shield" Size="Size.Small" /><span>Manager access is protected by your workspace password.</span></div>
+        </div>
+        <div class="form-footer"><span>EVOLUTION CONTROL</span><span>YOUR WORKSPACE, SIMPLIFIED.</span></div>
+    </section>
+</main>
+
+@code {
+    private readonly LoginModel _model = new();
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private class LoginModel
+    {
+        public string Password { get; set; } = "";
+    }
+
+    private async Task HandleLogin()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            if (await Api.LoginAsync(_model.Password))
+            {
+                State.SetAuthenticated("admin", "admin@platform.local", "SuperAdmin");
+                Nav.NavigateTo("/", true);
+            }
+            else
+            {
+                _errorMessage = "That password wasn't recognized. Please try again.";
+            }
+        }
+        catch
+        {
+            _errorMessage = "Unable to sign in right now. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

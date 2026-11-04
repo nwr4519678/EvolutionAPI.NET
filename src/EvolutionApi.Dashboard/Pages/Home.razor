@@ -1,78 +1,312 @@
 @page "/"
-@inject EvolutionApiClient Api
-@inject DashboardState State
-@inject ISnackbar Snackbar
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject RealtimeService Realtime
+@inject NavigationManager Nav
+@implements IDisposable
 
-<PageTitle>Overview · Evolution Control</PageTitle>
-
-<div class="hero-block">
-    <div class="hero-copy">
-        <MudText Typo="Typo.overline" Class="eyebrow">EVOLUTION CONTROL CENTER</MudText>
-        <MudText Typo="Typo.h3" Class="hero-title">@Greeting, operator.</MudText>
-        <MudText Typo="Typo.body1" Class="muted-text">Manage client APIs, connect WhatsApp numbers, and monitor capacity.</MudText>
-        <MudText Typo="Typo.caption" Class="muted-text hero-date">@DateTime.Now.ToString("dddd, dd MMMM yyyy")</MudText>
+<div class="overview-page">
+    <!-- Header -->
+    <div class="overview-header">
+        <div>
+            <h1 class="overview-title">Platform Intelligence</h1>
+            <p class="overview-subtitle">Real-time telemetry and automation performance</p>
+        </div>
+        <div class="overview-actions">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.Refresh"
+                       OnClick="LoadDataAsync"
+                       Disabled="@_isLoading"
+                       Style="border-radius: 9999px; text-transform: none;">
+                Refresh
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => Nav.NavigateTo("/numbers?action=add"))"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Add WhatsApp Number
+            </MudButton>
+        </div>
     </div>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Add" Href="/instances">New instance</MudButton>
-</div>
 
-<MudGrid Spacing="3" Class="mb-6">
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Client APIs" Value="@(_hasLoaded ? _instances.Count.ToString() : "—")" Icon="@Icons.Material.Filled.Devices" Color="Color.Primary" /></MudItem>
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="Connected" Value="@(_hasLoaded ? ConnectedCount.ToString() : "—")" Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" /></MudItem>
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="API CPU" Value="@(_usage?.ProcessCpuPercent is { } cpu ? $"{cpu:F1}%" : "—")" Icon="@Icons.Material.Filled.Memory" Color="Color.Warning" /></MudItem>
-    <MudItem xs="12" sm="6" md="3"><MetricCard Label="API RAM" Value="@(_usage is not null ? FormatBytes(_usage.ProcessWorkingSetBytes) : "—")" Icon="@Icons.Material.Filled.DeveloperBoard" Color="Color.Info" /></MudItem>
-</MudGrid>
+    @if (_isLoading && _overview == null)
+    {
+        <!-- Skeleton Loaders -->
+        <div class="metric-grid">
+            @for (int i = 0; i < 6; i++)
+            {
+                <div class="skeleton" style="height: 140px; border-radius: var(--radius-xl);"></div>
+            }
+        </div>
+    }
+    else if (_overview != null)
+    {
+        <!-- Metric Cards Grid -->
+        <div class="metric-grid">
+            <MetricCard Label="Total Tenants"
+                        Value="@_overview.TotalClients.ToString("N0")"
+                        Icon="@Icons.Material.Rounded.Business"
+                        Color="purple"
+                        ChangeText="@($"{_overview.ActiveClients} active")"
+                        IsPositiveChange="true" />
 
-<MudGrid Spacing="3">
-    <MudItem xs="12" lg="8">
-        <MudPaper Class="panel-card" Elevation="0">
-            <div class="panel-heading"><div><MudText Typo="Typo.h6">Your WhatsApp clients</MudText><MudText Typo="Typo.caption" Class="muted-text">Live connection inventory</MudText></div><MudButton Href="/instances" Variant="Variant.Text" Color="Color.Primary">View all</MudButton></div>
-            @if (_loading) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" /> }
-            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No clients yet" Message="Add a WhatsApp number to generate its private API key and QR code." ActionText="Add client number" ActionHref="/instances" /> }
+            <MetricCard Label="Active Numbers"
+                        Value="@_overview.ConnectedNumbers.ToString("N0")"
+                        Icon="@Icons.Material.Rounded.PhoneAndroid"
+                        Color="brand"
+                        ChangeText="@($"{_overview.TotalNumbers} configured")"
+                        IsPositiveChange="true" />
+
+            <MetricCard Label="Messages Today"
+                        Value="@_overview.MessagesToday.ToString("N0")"
+                        Icon="@Icons.Material.Rounded.Chat"
+                        Color="blue"
+                        ChangeText="@($"{_overview.MessagesThisMonth:N0} this month")"
+                        IsPositiveChange="true" />
+
+            <MetricCard Label="AI Tokens Today"
+                        Value="@_overview.TokensToday.ToString("N0")"
+                        Icon="@Icons.Material.Rounded.Psychology"
+                        Color="cyan"
+                        ChangeText="@($"${_overview.CostToday:F2} estimated cost")"
+                        IsPositiveChange="true" />
+
+            <MetricCard Label="AI Success Rate"
+                        Value="@($"{_overview.AiSuccessRate:F1}%")"
+                        Icon="@Icons.Material.Rounded.Verified"
+                        Color="amber"
+                        ChangeText="Execution rate"
+                        IsPositiveChange="@(_overview.AiSuccessRate >= 98.0)" />
+
+            <MetricCard Label="Avg Latency"
+                        Value="@($"{_overview.AvgResponseLatencyMs:F0} ms")"
+                        Icon="@Icons.Material.Rounded.Speed"
+                        Color="rose"
+                        ChangeText="@($"Queue depth: {_overview.QueueDepth}")"
+                        IsPositiveChange="@(_overview.AvgResponseLatencyMs < 2000)" />
+        </div>
+
+        <section class="resource-summary glass-card" aria-label="Current system resources">
+            <div class="resource-summary__heading">
+                <div>
+                    <h2>API process resources</h2>
+                    <p>EvolutionApi.API backend only; dashboard host and browser WASM are excluded.</p>
+                </div>
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.Memory" OnClick="@(() => Nav.NavigateTo("/resources"))">
+                    Resource details
+                </MudButton>
+            </div>
+            @if (_systemUsage is null)
+            {
+                <p class="text-muted">Resource readings are not available yet.</p>
+            }
             else
             {
-                <MudTable Items="_instances.Take(5)" Hover="true" Dense="true" Elevation="0">
-                    <HeaderContent><MudTh>Name</MudTh><MudTh>Number</MudTh><MudTh>Status</MudTh><MudTh>Integration</MudTh><MudTh></MudTh></HeaderContent>
-                    <RowTemplate><MudTd DataLabel="Name"><MudLink Href="@($"/instances/{context.Name}")">@context.Name</MudLink></MudTd><MudTd DataLabel="Number">@(context.Number ?? "—")</MudTd><MudTd DataLabel="Status"><StatusChip Status="@context.ConnectionStatus" /></MudTd><MudTd DataLabel="Integration">@context.Integration</MudTd><MudTd><MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" Href="@($"/instances/{context.Name}")" /></MudTd></RowTemplate>
-                </MudTable>
+                <div class="resource-summary__meters">
+                    <div class="resource-meter">
+                        <div class="resource-meter__label"><span>API CPU</span><strong>@FormatPercent(_systemUsage.ProcessCpuPercent)</strong></div>
+                        <MudProgressLinear Value="@(_systemUsage.ProcessCpuPercent ?? 0)" Max="100" Color="Color.Primary" Rounded="true" />
+                    </div>
+                    <div class="resource-meter">
+                        <div class="resource-meter__label"><span>@ApiMemoryLabel</span><strong>@FormatBytes(DisplayMemoryBytes) <small>/ @FormatBytes(_systemUsage.AvailableMemoryBytes)</small></strong></div>
+                        <MudProgressLinear Value="@WorkingSetPercent" Max="100" Color="Color.Secondary" Rounded="true" />
+                    </div>
+                </div>
+                <p class="resource-summary__sample">Total working set @FormatBytes(_systemUsage.ProcessWorkingSetBytes) · Private committed @FormatBytes(_systemUsage.ProcessPrivateBytes) · .NET heap @FormatBytes(_systemUsage.ManagedHeapBytes)</p>
+                <p class="resource-summary__sample">Sampled @LocalSampleTime(_systemUsage.SampledAtUtc)</p>
             }
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" lg="4">
-        <MudPaper Class="panel-card quick-actions" Elevation="0">
-            <MudText Typo="Typo.h6">Quick actions</MudText>
-            <MudButton Href="/instances" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.QrCode2">Connect with QR</MudButton>
-            <MudButton Href="/messages" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Send">Send a message</MudButton>
-            <MudButton Href="/usage" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Analytics">View resource usage</MudButton>
-            <MudButton Href="/resources" FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Code">Explore API resources</MudButton>
-        </MudPaper>
-    </MudItem>
-</MudGrid>
+        </section>
+
+        @if (_overview.TotalNumbers == 0 && _overview.TotalClients == 0)
+        {
+            <div class="glass-card mt-8">
+                <EmptyState Title="No WhatsApp Numbers Connected"
+                            Description="Get started by connecting your first WhatsApp number using QR pairing or Meta Cloud API."
+                            Icon="@Icons.Custom.Brands.WhatsApp"
+                            ActionText="Connect First Number"
+                            ActionIcon="@Icons.Material.Rounded.QrCodeScanner"
+                            ActionHref="/numbers?action=add" />
+            </div>
+        }
+        else
+        {
+            <!-- Operational Details Grid -->
+            <div class="details-grid mt-6">
+                <!-- Connected Instances & Health -->
+                <div class="glass-card p-6">
+                    <div class="card-section-title">
+                        <MudIcon Icon="@Icons.Material.Rounded.Sensors" Color="Color.Primary" Size="Size.Small" />
+                        <span>System Health & Queue Status</span>
+                    </div>
+
+                    <div class="health-indicators mt-4">
+                        <div class="health-row">
+                            <span class="text-secondary">Connected Numbers</span>
+                            <span class="health-val text-brand font-semibold">@_overview.ConnectedNumbers / @_overview.TotalNumbers</span>
+                        </div>
+                        <MudDivider Class="my-2" />
+                        <div class="health-row">
+                            <span class="text-secondary">Disconnected / Idle</span>
+                            <span class="health-val text-muted">@_overview.DisconnectedNumbers</span>
+                        </div>
+                        <MudDivider Class="my-2" />
+                        <div class="health-row">
+                            <span class="text-secondary">Open Conversations</span>
+                            <span class="health-val">@_overview.OpenConversations.ToString("N0")</span>
+                        </div>
+                        <MudDivider Class="my-2" />
+                        <div class="health-row">
+                            <span class="text-secondary">Active Message Queue Depth</span>
+                            <span class="health-val">@_overview.QueueDepth jobs</span>
+                        </div>
+                        <MudDivider Class="my-2" />
+                        <div class="health-row">
+                            <span class="text-secondary">Monthly AI Spend</span>
+                            <span class="health-val font-semibold text-brand">${_overview.CostThisMonth:F2}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Stream Feed -->
+                <div class="glass-card p-6">
+                    <div class="card-section-title">
+                        <MudIcon Icon="@Icons.Material.Rounded.Timeline" Color="Color.Primary" Size="Size.Small" />
+                        <span>Real-Time Stream Feed</span>
+                    </div>
+
+                    <div class="feed-container mt-4">
+                        @if (_recentEvents.Count == 0)
+                        {
+                            <div class="empty-feed">
+                                <MudIcon Icon="@Icons.Material.Rounded.Bolt" Size="Size.Medium" Class="text-muted" />
+                                <MudText Typo="Typo.caption" Class="text-muted mt-2">Awaiting inbound WhatsApp events...</MudText>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var evt in _recentEvents.Take(6))
+                            {
+                                <div class="feed-item">
+                                    <span class="feed-dot"></span>
+                                    <div class="feed-content">
+                                        <div class="feed-title">@evt.Title</div>
+                                        <div class="feed-time">@evt.Timestamp.ToString("HH:mm:ss")</div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
 
 @code {
-    private List<DashboardInstance> _instances = [];
-    private DashboardHealth? _health;
-    private DashboardUsageSnapshot? _usage;
-    private bool _loading;
-    private bool _hasLoaded;
-    private string Greeting => DateTime.Now.Hour switch { < 12 => "Good morning", < 18 => "Good afternoon", _ => "Good evening" };
-    private int ConnectedCount => _instances.Count(i => i.ConnectionStatus.Equals("open", StringComparison.OrdinalIgnoreCase) || i.ConnectionStatus.Equals("connected", StringComparison.OrdinalIgnoreCase));
-    private int AttentionCount => _instances.Count - ConnectedCount;
+    private PlatformOverviewDto? _overview;
+    private DashboardUsageDto? _systemUsage;
+    private bool _isLoading = true;
+    private readonly CancellationTokenSource _resourcePolling = new();
+    private readonly List<FeedEvent> _recentEvents = [];
+
+    private record FeedEvent(string Title, DateTimeOffset Timestamp);
 
     protected override async Task OnInitializedAsync()
     {
-        _loading = true;
-        try { _instances = (await Api.GetInstancesAsync()).ToList(); _health = await Api.GetHealthAsync(); _usage = await Api.GetUsageAsync(); _hasLoaded = true; }
-        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
-        finally { _loading = false; }
+        Realtime.OnNewMessage += HandleNewMessage;
+        Realtime.OnSessionStatusChanged += HandleSessionStatus;
+        await LoadDataAsync();
+        _ = PollResourcesAsync(_resourcePolling.Token);
     }
 
-    private static string FormatBytes(long bytes)
+    private async Task LoadDataAsync()
     {
-        string[] units = ["B", "KB", "MB", "GB", "TB"];
-        double value = Math.Max(0, bytes);
-        var unit = 0;
-        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
-        return $"{value:0.##} {units[unit]}";
+        _isLoading = true;
+        try
+        {
+            var overviewTask = Api.GetPlatformOverviewAsync();
+            var resourceTask = Api.GetDashboardUsageAsync();
+            await Task.WhenAll(overviewTask, resourceTask);
+            _overview = await overviewTask;
+            _systemUsage = await resourceTask;
+            if (_overview == null)
+            {
+                // Fallback clean zero state if API returned null
+                _overview = new PlatformOverviewDto(
+                    TotalClients: 0,
+                    ActiveClients: 0,
+                    TotalNumbers: 0,
+                    ConnectedNumbers: 0,
+                    DisconnectedNumbers: 0,
+                    TotalConversations: 0,
+                    OpenConversations: 0,
+                    MessagesToday: 0,
+                    MessagesThisWeek: 0,
+                    MessagesThisMonth: 0,
+                    TokensToday: 0,
+                    CostToday: 0m,
+                    CostThisMonth: 0m,
+                    AvgResponseLatencyMs: 0,
+                    AiSuccessRate: 100.0,
+                    QueueDepth: 0);
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private long DisplayMemoryBytes => _systemUsage is null ? 0 : _systemUsage.IsPrivateWorkingSetAvailable
+        ? _systemUsage.ProcessPrivateWorkingSetBytes
+        : _systemUsage.ProcessWorkingSetBytes;
+    private string ApiMemoryLabel => _systemUsage?.IsPrivateWorkingSetAvailable == true ? "API private RAM" : "API RAM (working set)";
+    private double WorkingSetPercent => _systemUsage is { AvailableMemoryBytes: > 0 }
+        ? Math.Clamp(DisplayMemoryBytes * 100d / _systemUsage.AvailableMemoryBytes, 0, 100)
+        : 0;
+
+    private static string FormatPercent(double? value) => value is null ? "Waiting for sample" : $"{value:F1}%";
+    private static string FormatBytes(long value) => value >= 1024L * 1024 * 1024
+        ? $"{value / (1024d * 1024 * 1024):F1} GB"
+        : $"{value / (1024d * 1024):F0} MB";
+    private static string LocalSampleTime(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc).ToLocalTime().ToString("HH:mm:ss");
+
+    private async Task PollResourcesAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                _systemUsage = await Api.GetDashboardUsageAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private Task HandleNewMessage(ConversationMessageDto msg)
+    {
+        _recentEvents.Insert(0, new FeedEvent($"Message {msg.Direction}: {msg.Body?.Take(40)}...", DateTimeOffset.UtcNow));
+        InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleSessionStatus(string numberId, string status)
+    {
+        _recentEvents.Insert(0, new FeedEvent($"Number {numberId} changed state to {status}", DateTimeOffset.UtcNow));
+        InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        Realtime.OnNewMessage -= HandleNewMessage;
+        Realtime.OnSessionStatusChanged -= HandleSessionStatus;
+        _resourcePolling.Cancel();
+        _resourcePolling.Dispose();
     }
 }
 

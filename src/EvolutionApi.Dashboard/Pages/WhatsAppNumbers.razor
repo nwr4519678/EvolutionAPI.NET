@@ -1,0 +1,372 @@
+@page "/numbers"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject RealtimeService Realtime
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">WhatsApp Numbers</h1>
+            <p class="page-subtitle">Manage phone lines, QR pairing gateways, and cloud integrations</p>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.Refresh"
+                       OnClick="LoadNumbersAsync"
+                       Disabled="@_isLoading"
+                       Style="border-radius: 9999px; text-transform: none;">
+                Refresh
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showAddWizard = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Add WhatsApp Number
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Official vs Unofficial Alert Warning -->
+    <div class="warning-banner mt-6">
+        <div class="warning-banner__icon">
+            <MudIcon Icon="@Icons.Material.Rounded.WarningAmber" Color="Color.Warning" Size="Size.Medium" />
+        </div>
+        <div class="warning-banner__content">
+            <span class="warning-banner__title">WhatsApp Web / QR Gateway Ban Advisory</span>
+            <p class="warning-banner__desc">
+                Sessions connected via QR code use WhatsApp Web emulation. While convenient for rapid testing and low-volume operations, unofficial automation carries a WhatsApp ban risk if high spam rates occur. For high-volume production deployments, the official <strong>WhatsApp Business Cloud API (Meta)</strong> is recommended.
+            </p>
+        </div>
+    </div>
+
+    <!-- Numbers Table -->
+    <div class="glass-card mt-6">
+        @if (_isLoading && _numbers == null)
+        {
+            <div class="p-8 text-center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="text-secondary mt-3">Loading numbers...</p>
+            </div>
+        }
+        else if (_numbers == null || _numbers.Items.Count == 0)
+        {
+            <EmptyState Title="No WhatsApp Numbers Connected"
+                        Description="No numbers have been linked to this tenant yet. Run the Add Number wizard to generate a pairing QR code or configure Cloud API."
+                        Icon="@Icons.Custom.Brands.WhatsApp"
+                        ActionText="Connect First Number"
+                        ActionIcon="@Icons.Material.Rounded.QrCodeScanner"
+                        OnAction="@(() => _showAddWizard = true)" />
+        }
+        else
+        {
+            <MudTable Items="@_numbers.Items" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Display Name</MudTh>
+                    <MudTh>Phone Number</MudTh>
+                    <MudTh>Method</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>AI Bot</MudTh>
+                    <MudTh>Created</MudTh>
+                    <MudTh Style="text-align: right;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Display Name">
+                        <div class="number-cell">
+                            <MudIcon Icon="@Icons.Custom.Brands.WhatsApp" Color="Color.Primary" Size="Size.Small" />
+                            <span class="font-semibold text-primary">@context.DisplayName</span>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="Phone Number">
+                        <span class="font-mono text-sm">@(string.IsNullOrWhiteSpace(context.PhoneNumber) ? "Pending connection" : context.PhoneNumber)</span>
+                    </MudTd>
+                    <MudTd DataLabel="Method">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                            @(context.ConnectionMethod == "QrPairing" ? "QR Web Gateway" : "Meta Cloud API")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <StatusBadge Status="@context.Status" />
+                    </MudTd>
+                    <MudTd DataLabel="AI Bot">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.BotEnabled ? Color.Success : Color.Default)">
+                            @(context.BotEnabled ? "Enabled" : "Paused")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Created">
+                        <span class="text-xs text-secondary">@context.CreatedAt.ToString("MMM dd, yyyy")</span>
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        <MudMenu Icon="@Icons.Material.Rounded.MoreVert" Size="Size.Small" Dense="true">
+                            <MudMenuItem Icon="@Icons.Material.Rounded.QrCode"
+                                         OnClick="@(() => ViewQrAsync(context))">
+                                View QR / Connect
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.Tune"
+                                         OnClick="@(() => Nav.NavigateTo($"/numbers/{context.Id}"))">
+                                Configure & Prompts
+                            </MudMenuItem>
+                            <MudDivider />
+                            @if (context.Status == "Connected")
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Rounded.PowerOff"
+                                             OnClick="@(() => DisconnectAsync(context.Id))">
+                                    Disconnect Session
+                                </MudMenuItem>
+                            }
+                            else
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Rounded.Refresh"
+                                             OnClick="@(() => ReconnectAsync(context.Id))">
+                                    Reconnect Line
+                                </MudMenuItem>
+                            }
+                        </MudMenu>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </div>
+</div>
+
+<!-- Add Number Wizard Dialog (MudStepper) -->
+<MudDialog @bind-Visible="_showAddWizard" Options="_wizardDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6" Class="dialog-title">Connect WhatsApp Number</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_wizardStep == 1)
+        {
+            <!-- Step 1: Configuration -->
+            <div class="wizard-step-content">
+                <MudText Typo="Typo.subtitle2" Class="mb-3">Step 1: Connection Method & Details</MudText>
+
+                <MudTextField @bind-Value="_wizardDisplayName"
+                              Label="Line Display Name"
+                              Variant="Variant.Outlined"
+                              Required="true"
+                              HelperText="e.g. 'Customer Support Main' or 'Sales Bot #1'"
+                              Class="mb-4" />
+
+                <MudRadioGroup @bind-Value="_wizardMethod" Class="connection-method-group">
+                    <div class="method-card @(_wizardMethod == "QrPairing" ? "selected" : "")"
+                         @onclick="@(() => _wizardMethod = "QrPairing")">
+                        <MudRadio Value="@("QrPairing")" Color="Color.Primary" />
+                        <div>
+                            <span class="font-semibold">QR Pairing (WhatsApp Web Gateway)</span>
+                            <p class="text-xs text-secondary mt-1">
+                                Scan QR code with any WhatsApp app on mobile. Instant setup, no Meta developer account required.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="method-card @(_wizardMethod == "CloudApi" ? "selected" : "")"
+                         @onclick="@(() => _wizardMethod = "CloudApi")">
+                        <MudRadio Value="@("CloudApi")" Color="Color.Primary" />
+                        <div>
+                            <span class="font-semibold">Meta WhatsApp Business Cloud API</span>
+                            <p class="text-xs text-secondary mt-1">
+                                Official Meta Graph API. Enterprise scale, 99.9% uptime, no device tethering needed.
+                            </p>
+                        </div>
+                    </div>
+                </MudRadioGroup>
+            </div>
+        }
+        else if (_wizardStep == 2)
+        {
+            <!-- Step 2: Live QR Scanner -->
+            <div class="wizard-step-content text-center">
+                <MudText Typo="Typo.subtitle2">Step 2: Scan QR Code with WhatsApp</MudText>
+                <p class="text-xs text-secondary mt-1">
+                    Open WhatsApp on your phone &gt; Settings &gt; Linked Devices &gt; Link a Device.
+                </p>
+
+                <div class="qr-box mt-4">
+                    @if (string.IsNullOrEmpty(_activeQrCode))
+                    {
+                        <div class="qr-loading">
+                            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                            <span class="text-xs text-secondary mt-3">Requesting fresh QR from gateway...</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="qr-container">
+                            <img src="@(GetQrSrc(_activeQrCode))" alt="WhatsApp Pairing QR Code" style="width: 220px; height: 220px;" />
+                        </div>
+                        <div class="qr-status-row mt-3">
+                            <span class="live-dot"></span>
+                            <span class="text-xs text-secondary">Awaiting phone camera scan...</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (_wizardStep == 3)
+        {
+            <!-- Step 3: Success -->
+            <div class="wizard-step-content text-center p-6">
+                <div class="success-icon-wrap">
+                    <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                </div>
+                <MudText Typo="Typo.h6" Class="mt-3">Line Successfully Connected!</MudText>
+                <p class="text-xs text-secondary mt-2">
+                    Your WhatsApp number is active and connected to the AI response engine.
+                </p>
+            </div>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_wizardStep == 1)
+        {
+            <MudButton OnClick="@(() => _showAddWizard = false)">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="ProceedToPairingAsync"
+                       Disabled="@string.IsNullOrWhiteSpace(_wizardDisplayName)">
+                Continue to Pairing
+            </MudButton>
+        }
+        else if (_wizardStep == 2)
+        {
+            <MudButton OnClick="@(() => _wizardStep = 1)">Back</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="FinishWizardAsync">
+                Done
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => _showAddWizard = false)">
+                Close
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private PagedResult<WhatsAppNumberDto>? _numbers;
+    private bool _isLoading = true;
+
+    // Wizard
+    private bool _showAddWizard;
+    private int _wizardStep = 1;
+    private string _wizardDisplayName = "";
+    private string _wizardMethod = "QrPairing";
+    private string? _activeQrCode;
+    private string? _createdNumberId;
+
+    private readonly DialogOptions _wizardDialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Realtime.OnQrCodeUpdated += HandleQrCodeUpdated;
+        Realtime.OnSessionStatusChanged += HandleSessionStatusChanged;
+        await LoadNumbersAsync();
+    }
+
+    private async Task LoadNumbersAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _numbers = await Api.GetNumbersAsync(tenantId, 1, 50);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ProceedToPairingAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        var created = await Api.CreateNumberAsync(new CreateWhatsAppNumberRequest(tenantId, _wizardDisplayName, _wizardMethod));
+        if (created != null)
+        {
+            _createdNumberId = created.Id;
+            _wizardStep = 2;
+
+            // Subscribe to this number's QR stream
+            await Realtime.SubscribeToNumberAsync(created.Id);
+
+            // Trigger connect on backend
+            await Api.ConnectNumberAsync(tenantId, created.Id);
+            _activeQrCode = await Api.GetNumberQrAsync(tenantId, created.Id);
+        }
+    }
+
+    private async Task ViewQrAsync(WhatsAppNumberDto number)
+    {
+        _wizardDisplayName = number.DisplayName;
+        _wizardMethod = number.ConnectionMethod;
+        _createdNumberId = number.Id;
+        _wizardStep = 2;
+        _showAddWizard = true;
+
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        _activeQrCode = await Api.GetNumberQrAsync(tenantId, number.Id);
+    }
+
+    private async Task DisconnectAsync(string numberId)
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        await Api.DisconnectNumberAsync(tenantId, numberId);
+        Snackbar.Add("WhatsApp line disconnected", Severity.Info);
+        await LoadNumbersAsync();
+    }
+
+    private async Task ReconnectAsync(string numberId)
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        await Api.ConnectNumberAsync(tenantId, numberId);
+        Snackbar.Add("Connecting...", Severity.Info);
+        await LoadNumbersAsync();
+    }
+
+    private async Task FinishWizardAsync()
+    {
+        _showAddWizard = false;
+        _wizardStep = 1;
+        _wizardDisplayName = "";
+        _activeQrCode = null;
+        await LoadNumbersAsync();
+    }
+
+    private Task HandleQrCodeUpdated(string qr)
+    {
+        _activeQrCode = qr;
+        InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleSessionStatusChanged(string numberId, string status)
+    {
+        if (numberId == _createdNumberId && status == "Connected")
+        {
+            _wizardStep = 3;
+            Snackbar.Add("WhatsApp connected successfully!", Severity.Success);
+            InvokeAsync(StateHasChanged);
+        }
+        return LoadNumbersAsync();
+    }
+
+    private string GetQrSrc(string raw)
+    {
+        if (raw.StartsWith("data:image")) return raw;
+        return $"data:image/png;base64,{raw}";
+    }
+
+    public void Dispose()
+    {
+        Realtime.OnQrCodeUpdated -= HandleQrCodeUpdated;
+        Realtime.OnSessionStatusChanged -= HandleSessionStatusChanged;
+    }
+}
+

@@ -1,0 +1,19 @@
+<span class="status-badge @GetStatusClass()">
+    <span class="status-dot"></span>
+    <span>@(CustomLabel ?? Status)</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public required string Status { get; set; }
+    [Parameter] public string? CustomLabel { get; set; }
+
+    private string GetStatusClass() => Status.ToLowerInvariant() switch
+    {
+        "active" or "connected" or "success" or "open" => "active",
+        "pending" or "qrready" or "qr-ready" => "pending",
+        "disconnected" or "error" or "banned" or "failed" or "revoked" => "error",
+        "suspended" or "resolved" => "suspended",
+        _ => "suspended"
+    };
+}
+
