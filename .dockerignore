@@ -1,0 +1,9 @@
+.git
+.vs
+artifacts
+reference
+**/bin
+**/obj
+**/*.user
+**/appsettings.Production.json
+**/.env

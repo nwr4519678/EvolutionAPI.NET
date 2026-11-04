@@ -1,0 +1,121 @@
+@page "/instances"
+@page "/instances/{InstanceName}"
+@inject EvolutionApiClient Api
+@inject DashboardState State
+@inject ISnackbar Snackbar
+
+<PageTitle>Instances · Evolution Control</PageTitle>
+<div class="page-heading"><div><MudText Typo="Typo.h4">Instances</MudText><MudText Class="muted-text">Create, connect, and operate WhatsApp Web sessions.</MudText></div><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreate">Create instance</MudButton></div>
+
+@if (!string.IsNullOrWhiteSpace(_createdKey))
+{
+    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-5" ShowCloseIcon="true" CloseIconClicked="(() => _createdKey = null)">
+        <MudText Typo="Typo.subtitle2">Client created for @_createdNumber — copy this API key now</MudText>
+        <MudText Typo="Typo.body2" Class="muted-text">This key is shown only once. Give it to the client to use their WhatsApp API.</MudText>
+        <MudText Typo="Typo.body2" Class="key-value">@_createdKey</MudText>
+        <MudText Typo="Typo.caption" Class="muted-text mt-2">Text endpoint: @Api.ApiOrigin.ToString().TrimEnd('/')/message/sendText/@_createdInstanceName</MudText>
+    </MudAlert>
+}
+
+@if (_deleteCandidate is not null)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-5" ShowCloseIcon="true" CloseIconClicked="CancelDelete">
+        Delete instance <strong>@_deleteCandidate.Name</strong> and its saved session data?
+        <MudButton Class="ml-3" Color="Color.Error" Variant="Variant.Filled" OnClick="ConfirmDelete">Delete permanently</MudButton>
+        <MudButton Class="ml-2" Variant="Variant.Text" OnClick="CancelDelete">Cancel</MudButton>
+    </MudAlert>
+}
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" lg="8">
+        <MudPaper Class="panel-card" Elevation="0">
+            @if (_loading) { <MudProgressLinear Indeterminate="true" /> }
+            else if (_instances.Count == 0) { <EmptyState Icon="@Icons.Material.Filled.DevicesOther" Title="No WhatsApp clients" Message="Add a WhatsApp number to generate an API key and QR code." ActionText="Add client number" OnAction="OpenCreate" /> }
+            else
+            {
+                <MudTable Items="_instances" Hover="true" Dense="true" Elevation="0" Filter="new Func<DashboardInstance, bool>(Filter)">
+                    <ToolBarContent><MudTextField @bind-Value="_search" Placeholder="Search instances" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" /><MudSpacer /><MudIconButton Icon="@Icons.Material.Filled.Refresh" aria-label="Refresh instances" OnClick="Load" /></ToolBarContent>
+                    <HeaderContent><MudTh>Instance</MudTh><MudTh>Number</MudTh><MudTh>Status</MudTh><MudTh>Created</MudTh><MudTh></MudTh></HeaderContent>
+                    <RowTemplate><MudTd DataLabel="Instance"><MudLink Href="@($"/instances/{context.Name}")">@context.Name</MudLink><MudText Typo="Typo.caption" Class="muted-text">@context.Integration</MudText></MudTd><MudTd DataLabel="Number">@(context.Number ?? "—")</MudTd><MudTd DataLabel="Status"><StatusChip Status="@context.ConnectionStatus" /></MudTd><MudTd DataLabel="Created">@context.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</MudTd><MudTd><MudIconButton Icon="@Icons.Material.Filled.QrCode2" Color="Color.Primary" OnClick="@(() => Connect(context))" /><MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Warning" OnClick="@(() => Logout(context))" /><MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Color="Color.Error" OnClick="@(() => Delete(context))" /></MudTd></RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" lg="4">
+        <MudPaper Class="panel-card session-panel" Elevation="0">
+            <MudText Typo="Typo.h6">Connection station</MudText>
+            @if (_selected is null) { <EmptyState Icon="@Icons.Material.Filled.QrCode2" Title="Select a session" Message="Choose Connect on an instance to request a QR code." /> }
+            else if (_connecting) { <MudProgressCircular Indeterminate="true" Color="Color.Primary" Class="mt-6" /> }
+            else { <MudText Typo="Typo.subtitle1">@_selected.Name</MudText><StatusChip Status="@(_qr?.State ?? _selected.ConnectionStatus)" />
+                @if (!string.IsNullOrWhiteSpace(_qr?.QrCode?.Base64)) { <img class="qr-image" src="@_qr.QrCode.Base64" alt="WhatsApp QR code" /><MudText Typo="Typo.caption" Class="muted-text">Scan this code from WhatsApp → Linked devices.</MudText> }
+                else { <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-4">No QR is currently available. The session may already be connected.</MudAlert> }
+                <MudButton FullWidth="true" Class="mt-4" Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => Connect(_selected))" StartIcon="@Icons.Material.Filled.Refresh">Refresh connection</MudButton>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_createOpen)
+{
+    <MudPaper Class="create-panel panel-card" Elevation="0">
+        <div class="panel-heading"><MudText Typo="Typo.h6">Create WhatsApp instance</MudText><MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="CloseCreate" /></div>
+        <MudText Typo="Typo.body2" Class="muted-text mb-3">Enter the WhatsApp number you want to connect. We’ll create its private API key and request a QR code.</MudText>
+        <MudGrid Spacing="2"><MudItem xs="12" sm="6"><MudTextField @bind-Value="_newInstance.Number" Label="WhatsApp number" Placeholder="+201001234567" Required="true" InputType="InputType.Telephone" /></MudItem><MudItem xs="12" sm="6"><MudTextField Value="@GeneratedInstanceName" Label="Generated client ID" ReadOnly="true" /></MudItem><MudItem xs="12"><MudTextField @bind-Value="_newInstance.WebhookUrl" Label="Webhook URL (optional)" /></MudItem></MudGrid>
+        <MudButton Class="mt-4" Color="Color.Primary" Variant="Variant.Filled" Disabled="@_creating" StartIcon="@Icons.Material.Filled.QrCode2" OnClick="Create">@(_creating ? "Creating client and QR…" : "Create client and QR code")</MudButton>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string? InstanceName { get; set; }
+    private List<DashboardInstance> _instances = [];
+    private DashboardInstance? _selected;
+    private ConnectResult? _qr;
+    private bool _loading;
+    private bool _createOpen;
+    private bool _connecting;
+    private string _search = string.Empty;
+    private CreateInstanceRequest _newInstance = new();
+    private string? _createdKey;
+    private string? _createdNumber;
+    private string? _createdInstanceName;
+    private bool _creating;
+    private DashboardInstance? _deleteCandidate;
+    private string GeneratedInstanceName => string.IsNullOrWhiteSpace(_newInstance.Number)
+        ? "Generated from number"
+        : "wa-" + new string(_newInstance.Number.Where(char.IsDigit).ToArray());
+
+    protected override async Task OnInitializedAsync() { await Load(); if (!string.IsNullOrWhiteSpace(InstanceName)) { var item = _instances.FirstOrDefault(i => i.Name == InstanceName); if (item is not null) await Connect(item); } }
+    private async Task Load() { _loading = true; try { _instances = (await Api.GetInstancesAsync()).ToList(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _loading = false; } }
+    private bool Filter(DashboardInstance item) => string.IsNullOrWhiteSpace(_search) || item.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || (item.Number?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false);
+    private void OpenCreate() => _createOpen = true;
+    private void CloseCreate() { _createOpen = false; _newInstance = new(); }
+    private async Task Create()
+    {
+        var number = new string((_newInstance.Number ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (number.Length is < 7 or > 15) { Snackbar.Add("Enter an international WhatsApp number with 7 to 15 digits.", Severity.Warning); return; }
+        _creating = true;
+        _createdKey = null;
+        try
+        {
+            _newInstance.Number = number;
+            _newInstance.InstanceName = "wa-" + number;
+            _newInstance.Token = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var result = await Api.CreateInstanceAsync(_newInstance);
+            _createdKey = result.ApiKey;
+            _createdNumber = "+" + number;
+            _createdInstanceName = result.InstanceName;
+            Snackbar.Add($"Client created for +{number}. Scan the QR code to connect it.", Severity.Success);
+            CloseCreate();
+            await Load();
+            var instance = _instances.FirstOrDefault(item => item.Name == result.InstanceName);
+            if (instance is not null) await Connect(instance);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _creating = false; }
+    }
+    private async Task Connect(DashboardInstance instance) { _selected = instance; _qr = null; _connecting = true; State.SelectInstance(instance.Name); try { _qr = await Api.ConnectAsync(instance.Name); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } finally { _connecting = false; } }
+    private async Task Logout(DashboardInstance instance) { try { await Api.LogoutAsync(instance.Name); Snackbar.Add($"{instance.Name} logged out", Severity.Success); await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
+    private void Delete(DashboardInstance instance) => _deleteCandidate = instance;
+    private void CancelDelete() => _deleteCandidate = null;
+    private async Task ConfirmDelete() { if (_deleteCandidate is not { } instance) return; try { await Api.DeleteAsync(instance.Name); Snackbar.Add($"{instance.Name} deleted", Severity.Success); if (_selected?.Name == instance.Name) _selected = null; _deleteCandidate = null; await Load(); } catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); } }
+}

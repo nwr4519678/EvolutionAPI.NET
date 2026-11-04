@@ -1,0 +1,14 @@
+@page "/resources"
+@inject EvolutionApiClient Api
+
+<PageTitle>Resources · Evolution Control</PageTitle>
+<div class="page-heading"><div><MudText Typo="Typo.h4">Resources</MudText><MudText Class="muted-text">Everything you need to operate and integrate the gateway.</MudText></div></div>
+<MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-5">These resources open on the API host at <strong>@Api.ApiOrigin</strong>. Keep the API project running while using the dashboard.</MudAlert>
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.Api" Title="API documentation" Text="Open Scalar and inspect every route, schema, and request contract." Href="@ResourceUrl("scalar/v1")" /></MudItem>
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.Code" Title="OpenAPI schema" Text="Download the machine-readable OpenAPI document for Postman and clients." Href="@ResourceUrl("openapi/v1.json")" /></MudItem>
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.TaskAlt" Title="Health and readiness" Text="Check liveness, database connectivity, workers, and deployment state." Href="@ResourceUrl("health/ready")" /></MudItem>
+    <MudItem xs="12" md="6"><ResourceCard Icon="@Icons.Material.Filled.Work" Title="Hangfire operations" Text="Inspect scheduled jobs, retries, and background processing. This protected admin page requires a dedicated key in the apikey request header, so it cannot be opened by a normal browser link." RequiresAdminKey="true" /></MudItem>
+</MudGrid>
+
+@code { private string ResourceUrl(string path) => new Uri(Api.ApiOrigin, path).ToString(); }

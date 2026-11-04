@@ -1,0 +1,11 @@
+<MudPaper Class="metric-card" Elevation="0">
+    <div class="metric-icon @Color.ToString().ToLowerInvariant()"><MudIcon Icon="@Icon" /></div>
+    <div><MudText Typo="Typo.caption" Class="muted-text">@Label</MudText><MudText Typo="Typo.h5" Class="metric-value">@Value</MudText></div>
+</MudPaper>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public string Icon { get; set; } = string.Empty;
+    [Parameter] public Color Color { get; set; }
+}

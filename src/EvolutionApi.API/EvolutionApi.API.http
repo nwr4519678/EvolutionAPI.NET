@@ -1,0 +1,6 @@
+@EvolutionApi.API_HostAddress = http://localhost:5051
+
+GET {{EvolutionApi.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

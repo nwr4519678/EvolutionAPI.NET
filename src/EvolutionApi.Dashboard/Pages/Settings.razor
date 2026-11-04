@@ -1,0 +1,108 @@
+@page "/settings"
+@inject DashboardState State
+@inject EvolutionApiClient Api
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Manager sign in · Evolution Control</PageTitle>
+@if (!State.IsManagerAuthenticated)
+{
+    <main class="login-screen">
+        <div class="login-orb login-orb-one"></div><div class="login-orb login-orb-two"></div>
+        <section class="login-layout">
+            <div class="login-intro">
+                <div class="login-logo"><MudIcon Icon="@Icons.Material.Filled.Bolt" /></div>
+                <MudText Typo="Typo.overline" Class="login-kicker">EVOLUTION API · MANAGEMENT</MudText>
+                <MudText Typo="Typo.h2" Class="login-title">Your WhatsApp operations,<br />under one roof.</MudText>
+                <MudText Typo="Typo.body1" Class="login-description">Manage connected numbers, issue client API keys, pair sessions, and keep an eye on system usage.</MudText>
+                <div class="login-feature-list">
+                    <div><MudIcon Icon="@Icons.Material.Filled.Key" /><span>Private API access for every client</span></div>
+                    <div><MudIcon Icon="@Icons.Material.Filled.QrCode2" /><span>Quick QR pairing and session controls</span></div>
+                    <div><MudIcon Icon="@Icons.Material.Filled.Analytics" /><span>Clear system and database usage</span></div>
+                </div>
+            </div>
+
+            <MudPaper Class="login-card" Elevation="0">
+                <div class="login-card-heading"><MudText Typo="Typo.h4">Welcome back</MudText><MudText Typo="Typo.body2" Class="muted-text">Sign in to your manager workspace.</MudText></div>
+                <MudTextField @bind-Value="_password" Label="Manager password" Placeholder="Enter your password" InputType="InputType.Password" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Lock" Class="login-password" AutoFocus="true" OnKeyDown="HandleKeyDown" />
+                <MudButton Class="login-submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="@_signingIn" OnClick="Login">
+                    @if (_signingIn) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> <span>Signing in…</span> }
+                    else { <span>Sign in to dashboard</span><MudIcon Icon="@Icons.Material.Filled.ArrowForward" Class="ml-2" /> }
+                </MudButton>
+                <div class="login-secure-note"><MudIcon Icon="@Icons.Material.Filled.VerifiedUser" /><span>Secure manager access · session expires after 8 hours</span></div>
+            </MudPaper>
+        </section>
+        <footer class="login-footer"><span>EVOLUTION CONTROL</span><span>Private WhatsApp gateway management</span></footer>
+    </main>
+}
+else
+{
+    <div class="page-heading"><div><MudText Typo="Typo.h4">Manager access</MudText><MudText Class="muted-text">Manage your manager session.</MudText></div></div>
+    <MudPaper Class="panel-card" Elevation="0">
+        <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.VerifiedUser">Manager session active</MudChip>
+        <MudText Typo="Typo.body2" Class="muted-text mt-4">The gateway API key stays on the dashboard server. Your browser uses a short-lived, HTTP-only manager session cookie.</MudText>
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@_testing" OnClick="TestConnection">@(_testing ? "Checking…" : "Check gateway connection")</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="Logout">Sign out</MudButton>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private string _password = string.Empty;
+    private bool _signingIn;
+    private bool _testing;
+
+    private async Task Login()
+    {
+        if (string.IsNullOrWhiteSpace(_password))
+        {
+            Snackbar.Add("Enter the manager password.", Severity.Warning);
+            return;
+        }
+
+        _signingIn = true;
+        try
+        {
+            if (!await Api.LoginManagerAsync(_password))
+            {
+                Snackbar.Add("Manager password is incorrect.", Severity.Error);
+                return;
+            }
+            State.SetManagerAuthenticated(true);
+            _password = string.Empty;
+            Snackbar.Add("Signed in as manager.", Severity.Success);
+            Navigation.NavigateTo("/", replace: true);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _signingIn = false; }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter") await Login();
+    }
+
+    private async Task TestConnection()
+    {
+        _testing = true;
+        try
+        {
+            var instances = await Api.GetInstancesAsync();
+            Snackbar.Add($"Gateway connection is healthy. {instances.Count} client instance(s) found.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _testing = false; }
+    }
+
+    private async Task Logout()
+    {
+        try
+        {
+            await Api.LogoutManagerAsync();
+            State.SetManagerAuthenticated(false);
+            Snackbar.Add("Signed out.", Severity.Info);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}
