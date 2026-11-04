@@ -1,0 +1,94 @@
+@page "/audit-log"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Immutable Audit Trail</h1>
+            <p class="page-subtitle">Security audit logs, credential rotations, session events, and configuration modifications</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.Refresh"
+                       OnClick="LoadLogsAsync"
+                       Disabled="@_isLoading"
+                       Style="border-radius: 9999px; text-transform: none;">
+                Refresh
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="glass-card mt-6">
+        @if (_isLoading && _logs == null)
+        {
+            <div class="p-8 text-center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="text-secondary mt-3">Loading security audit records...</p>
+            </div>
+        }
+        else if (_logs == null || _logs.Items.Count == 0)
+        {
+            <EmptyState Title="No Audit Events Recorded"
+                        Description="No administrative actions or security events logged in this context yet."
+                        Icon="@Icons.Material.Rounded.History" />
+        }
+        else
+        {
+            <MudTable Items="@_logs.Items" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Timestamp</MudTh>
+                    <MudTh>User</MudTh>
+                    <MudTh>Action</MudTh>
+                    <MudTh>Entity</MudTh>
+                    <MudTh>IP Address</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Timestamp">
+                        <span class="text-xs font-mono text-muted">@context.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</span>
+                    </MudTd>
+                    <MudTd DataLabel="User">
+                        <span class="font-semibold text-xs text-primary">@(context.UserEmail ?? "System Worker")</span>
+                    </MudTd>
+                    <MudTd DataLabel="Action">
+                        <code class="slug-tag">@context.Action</code>
+                    </MudTd>
+                    <MudTd DataLabel="Entity">
+                        <span class="text-xs">@context.EntityType #@context.EntityId</span>
+                    </MudTd>
+                    <MudTd DataLabel="IP">
+                        <span class="text-xs font-mono text-secondary">@(context.IpAddress ?? "127.0.0.1")</span>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </div>
+</div>
+
+@code {
+    private PagedResult<AuditLogDto>? _logs;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogsAsync();
+    }
+
+    private async Task LoadLogsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id;
+            _logs = await Api.GetAuditLogsAsync(tenantId, 1, 50);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}
+

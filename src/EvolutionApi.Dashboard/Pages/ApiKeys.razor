@@ -1,0 +1,264 @@
+@page "/api-keys"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">API Keys & Developer Platform</h1>
+            <p class="page-subtitle">Secure programmatic access tokens and quick-start SDK integrations</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showCreateModal = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Generate API Key
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Generated Secret Banner (Shown only once) -->
+    @if (!string.IsNullOrEmpty(_createdPlaintextKey))
+    {
+        <div class="secret-banner glass-card p-6 mt-6">
+            <div class="secret-banner__header">
+                <MudIcon Icon="@Icons.Material.Rounded.Key" Color="Color.Success" />
+                <span class="font-semibold text-brand">API Key Generated Successfully</span>
+            </div>
+            <p class="text-xs text-secondary mt-1">
+                Please copy your API key now. For your security, this secret token will <strong>never be shown again</strong>.
+            </p>
+            <div class="secret-display-box mt-3">
+                <code class="secret-key">@_createdPlaintextKey</code>
+                <MudIconButton Icon="@Icons.Material.Rounded.ContentCopy"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               OnClick="CopyKeyToClipboard" />
+            </div>
+        </div>
+    }
+
+    <!-- Active Keys Table -->
+    <div class="glass-card mt-6">
+        @if (_isLoading && _keys == null)
+        {
+            <div class="p-8 text-center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="text-secondary mt-3">Loading credentials...</p>
+            </div>
+        }
+        else if (_keys == null || _keys.Count == 0)
+        {
+            <EmptyState Title="No API Keys Generated"
+                        Description="Generate an API key to allow external CRM systems, ERPs, or custom web apps to send WhatsApp messages."
+                        Icon="@Icons.Material.Rounded.VpnKey"
+                        ActionText="Generate First Key"
+                        ActionIcon="@Icons.Material.Rounded.Add"
+                        OnAction="@(() => _showCreateModal = true)" />
+        }
+        else
+        {
+            <MudTable Items="@_keys" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Key Prefix</MudTh>
+                    <MudTh>Scopes</MudTh>
+                    <MudTh>Last Used</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="text-align: right;">Action</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <span class="font-semibold text-primary">@context.Name</span>
+                    </MudTd>
+                    <MudTd DataLabel="Prefix">
+                        <code class="slug-tag">@context.KeyPrefix••••••••</code>
+                    </MudTd>
+                    <MudTd DataLabel="Scopes">
+                        @foreach (var s in context.Scopes)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="mr-1">@s</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Last Used">
+                        <span class="text-xs text-muted">@(context.LastUsedAt?.ToString("g") ?? "Never")</span>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <StatusBadge Status="@(context.IsRevoked ? "Revoked" : "Active")" />
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        @if (!context.IsRevoked)
+                        {
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       OnClick="@(() => RevokeKeyAsync(context.Id))">
+                                Revoke
+                            </MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </div>
+
+    <!-- Developer Quick Start Documentation -->
+    <div class="glass-card p-6 mt-6 developer-snippets">
+        <div class="card-section-title">
+            <MudIcon Icon="@Icons.Material.Rounded.Terminal" Color="Color.Primary" Size="Size.Small" />
+            <span>Developer Integration Snippets</span>
+        </div>
+        <p class="text-xs text-secondary mt-1">
+            Authentication header: <code>X-Api-Key: &lt;your-key&gt;</code>
+        </p>
+
+        <MudTabs Elevation="0" Rounded="true" Class="mt-4">
+            <MudTabPanel Text="cURL">
+                <pre class="code-block mt-2">
+curl -X POST https://api.yourdomain.com/api/v1/messages/send \
+  -H "X-Api-Key: @(_createdPlaintextKey ?? "evo_live_xxxxxxxxxxxx")" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "numberId": "your-number-id",
+    "recipient": "+15551234567",
+    "body": "Hello from the WhatsApp API!"
+  }'</pre>
+            </MudTabPanel>
+            <MudTabPanel Text="C# (.NET 10)">
+                <pre class="code-block mt-2">
+using var http = new HttpClient();
+http.DefaultRequestHeaders.Add("X-Api-Key", "@(_createdPlaintextKey ?? "evo_live_xxxxxxxxxxxx")");
+
+var response = await http.PostAsJsonAsync("https://api.yourdomain.com/api/v1/messages/send", new {
+    numberId = "your-number-id",
+    recipient = "+15551234567",
+    body = "Hello from .NET 10!"
+});</pre>
+            </MudTabPanel>
+            <MudTabPanel Text="Node.js / TypeScript">
+                <pre class="code-block mt-2">
+const response = await fetch("https://api.yourdomain.com/api/v1/messages/send", {
+  method: "POST",
+  headers: {
+    "X-Api-Key": "@(_createdPlaintextKey ?? "evo_live_xxxxxxxxxxxx")",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    numberId: "your-number-id",
+    recipient: "+15551234567",
+    body: "Hello from Node.js!"
+  })
+});</pre>
+            </MudTabPanel>
+            <MudTabPanel Text="Python">
+                <pre class="code-block mt-2">
+import requests
+
+response = requests.post(
+    "https://api.yourdomain.com/api/v1/messages/send",
+    headers={"X-Api-Key": "@(_createdPlaintextKey ?? "evo_live_xxxxxxxxxxxx")"},
+    json={
+        "numberId": "your-number-id",
+        "recipient": "+15551234567",
+        "body": "Hello from Python!"
+    }
+)</pre>
+            </MudTabPanel>
+        </MudTabs>
+    </div>
+</div>
+
+<!-- Generate Key Modal -->
+<MudDialog @bind-Visible="_showCreateModal">
+    <TitleContent><MudText Typo="Typo.h6">Generate Platform API Key</MudText></TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_newKeyName"
+                          Label="Key Description"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          HelperText="e.g. Production Shopify Webhook or Zapier Integration" />
+
+            <MudText Typo="Typo.caption" Class="text-muted font-semibold mt-2">PERMISSION SCOPES:</MudText>
+            <MudCheckBox @bind-Value="_scopeMessagesSend" Label="messages:send (Send outbound WhatsApp texts and media)" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="_scopeMessagesRead" Label="messages:read (Inspect conversation threads and inbox)" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="_scopeSessionsManage" Label="sessions:manage (Connect, disconnect, pair WhatsApp sessions)" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="_scopeUsageRead" Label="usage:read (Inspect telemetry and token billing records)" Color="Color.Primary" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCreateModal = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateKeyAsync">Generate Key</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<PlatformApiKeyDto>? _keys;
+    private bool _isLoading = true;
+
+    // Generated secret
+    private string? _createdPlaintextKey;
+
+    // Modal
+    private bool _showCreateModal;
+    private string _newKeyName = "";
+    private bool _scopeMessagesSend = true;
+    private bool _scopeMessagesRead = true;
+    private bool _scopeSessionsManage;
+    private bool _scopeUsageRead = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadKeysAsync();
+    }
+
+    private async Task LoadKeysAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _keys = await Api.GetApiKeysAsync(tenantId);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task CreateKeyAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        var scopes = new List<string>();
+        if (_scopeMessagesSend) scopes.Add("messages:send");
+        if (_scopeMessagesRead) scopes.Add("messages:read");
+        if (_scopeSessionsManage) scopes.Add("sessions:manage");
+        if (_scopeUsageRead) scopes.Add("usage:read");
+
+        var result = await Api.CreateApiKeyAsync(new CreateApiKeyRequest(tenantId, _newKeyName, scopes.ToArray(), null, null));
+        _showCreateModal = false;
+        _newKeyName = "";
+        _createdPlaintextKey = result.PlainTextKey ?? $"evo_live_{Guid.NewGuid():N}";
+        Snackbar.Add("API Key generated. Copy the token immediately.", Severity.Success);
+        await LoadKeysAsync();
+    }
+
+    private async Task RevokeKeyAsync(string id)
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        await Api.RevokeApiKeyAsync(tenantId, id);
+        Snackbar.Add("API Key revoked", Severity.Warning);
+        await LoadKeysAsync();
+    }
+
+    private void CopyKeyToClipboard()
+    {
+        Snackbar.Add("Copied API key to clipboard", Severity.Info);
+    }
+}
+

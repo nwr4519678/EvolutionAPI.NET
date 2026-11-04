@@ -1,0 +1,34 @@
+<div class="metric-card @Color">
+    <div class="metric-card__header">
+        <span class="metric-label">@Label</span>
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <div class="metric-card__icon-wrap">
+                <MudIcon Icon="@Icon" Size="Size.Small" />
+            </div>
+        }
+    </div>
+
+    <div class="metric-value animated-counter">
+        @Value
+    </div>
+
+    @if (!string.IsNullOrEmpty(ChangeText))
+    {
+        <div class="metric-change @(IsPositiveChange ? "positive" : "negative")">
+            <MudIcon Icon="@(IsPositiveChange ? Icons.Material.Rounded.ArrowUpward : Icons.Material.Rounded.ArrowDownward)"
+                     Size="Size.Small" Style="font-size: 12px;" />
+            <span>@ChangeText</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required string Label { get; set; }
+    [Parameter, EditorRequired] public required string Value { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string Color { get; set; } = "brand"; // brand, purple, blue, amber, rose, cyan
+    [Parameter] public string? ChangeText { get; set; }
+    [Parameter] public bool IsPositiveChange { get; set; } = true;
+}
+

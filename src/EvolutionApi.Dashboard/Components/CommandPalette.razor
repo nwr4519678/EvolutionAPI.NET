@@ -1,0 +1,105 @@
+@using EvolutionApi.Dashboard.Services
+@inject NavigationManager Nav
+
+<div class="command-palette-backdrop" @onclick="HandleBackdropClick">
+    <div class="command-palette-card" @onclick:stopPropagation="true">
+        <!-- Search Input -->
+        <div class="palette-header">
+            <MudIcon Icon="@Icons.Material.Rounded.Search" Class="palette-search-icon" />
+            <input type="text"
+                   class="palette-input"
+                   placeholder="Type a command or search..."
+                   @bind="_query"
+                   @bind:event="oninput"
+                   autofocus />
+            <span class="palette-esc-hint">ESC</span>
+        </div>
+
+        <MudDivider />
+
+        <!-- Search Results / Commands -->
+        <div class="palette-results">
+            @foreach (var group in FilteredGroups)
+            {
+                <div class="palette-group">
+                    <div class="palette-group-title">@group.Category</div>
+                    @foreach (var cmd in group.Commands)
+                    {
+                        <div class="palette-item" @onclick="@(() => ExecuteCommand(cmd.Href))">
+                            <MudIcon Icon="@cmd.Icon" Size="Size.Small" Class="palette-item-icon" />
+                            <div class="palette-item-content">
+                                <span class="palette-item-title">@cmd.Title</span>
+                                @if (!string.IsNullOrEmpty(cmd.Subtitle))
+                                {
+                                    <span class="palette-item-subtitle">@cmd.Subtitle</span>
+                                }
+                            </div>
+                            <MudIcon Icon="@Icons.Material.Rounded.KeyboardReturn" Size="Size.Small" Class="palette-item-return" />
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!FilteredGroups.Any())
+            {
+                <div class="palette-empty">
+                    <MudText Typo="Typo.body2" Class="text-muted">No matching results for "@_query"</MudText>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string _query = "";
+
+    private record CommandItem(string Title, string? Subtitle, string Icon, string Href, string Category);
+    private record CommandGroup(string Category, List<CommandItem> Commands);
+
+    private readonly List<CommandItem> _allCommands =
+    [
+        new("Platform Overview", "View overall metrics and health", Icons.Material.Rounded.Dashboard, "/", "Navigation"),
+        new("Clients", "Manage tenant accounts", Icons.Material.Rounded.Business, "/clients", "Navigation"),
+        new("WhatsApp Numbers", "Manage connected numbers and QR codes", Icons.Material.Rounded.PhoneAndroid, "/numbers", "Navigation"),
+        new("Live Inbox", "Monitor conversations and takeover chat", Icons.Material.Rounded.Inbox, "/inbox", "Navigation"),
+        new("System Prompts", "Edit AI prompts with Monaco editor", Icons.Material.Rounded.EditNote, "/prompts", "Navigation"),
+        new("Rules Engine", "Configure bot response pipelines", Icons.Material.Rounded.Rule, "/rules", "Navigation"),
+        new("Knowledge Base", "Upload documents and FAQs for RAG", Icons.Material.Rounded.MenuBook, "/knowledge", "Navigation"),
+        new("Usage & Billing", "Inspect tokens, cost and latency", Icons.Material.Rounded.BarChart, "/usage", "Navigation"),
+        new("AI Providers", "Manage OpenAI, Anthropic, Gemini endpoints", Icons.Material.Rounded.Psychology, "/ai-providers", "Navigation"),
+        new("API Keys", "Manage public REST API credentials", Icons.Material.Rounded.VpnKey, "/api-keys", "Navigation"),
+        new("Webhooks", "Configure event webhooks and delivery logs", Icons.Material.Rounded.Webhook, "/webhooks", "Navigation"),
+        new("Settings", "Platform and client configurations", Icons.Material.Rounded.Tune, "/settings", "Navigation"),
+
+        // Quick Actions
+        new("Add WhatsApp Number", "Pair a new phone number with QR", Icons.Material.Rounded.AddCircleOutline, "/numbers?action=add", "Actions"),
+        new("Add New Client", "Onboard a new tenant", Icons.Material.Rounded.PersonAdd, "/clients?action=new", "Actions"),
+        new("Run Rule Simulator", "Test how rules evaluate a sample message", Icons.Material.Rounded.PlayArrow, "/rules?action=simulate", "Actions")
+    ];
+
+    private IEnumerable<CommandGroup> FilteredGroups
+    {
+        get
+        {
+            var filtered = string.IsNullOrWhiteSpace(_query)
+                ? _allCommands
+                : _allCommands.Where(c => c.Title.Contains(_query, StringComparison.OrdinalIgnoreCase) ||
+                                          (c.Subtitle?.Contains(_query, StringComparison.OrdinalIgnoreCase) ?? false));
+
+            return filtered
+                .GroupBy(c => c.Category)
+                .Select(g => new CommandGroup(g.Key, g.ToList()));
+        }
+    }
+
+    private void ExecuteCommand(string href)
+    {
+        Nav.NavigateTo(href);
+        OnClose.InvokeAsync();
+    }
+
+    private void HandleBackdropClick() => OnClose.InvokeAsync();
+}
+

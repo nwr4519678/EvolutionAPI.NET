@@ -1,0 +1,265 @@
+@page "/rules"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Bot Rules Engine</h1>
+            <p class="page-subtitle">Configure pre- and post-AI processing pipelines, guardrails, and escalation triggers</p>
+        </div>
+        <div class="header-actions">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.PlayArrow"
+                       OnClick="@(() => _showSimulator = !_showSimulator)"
+                       Color="@(_showSimulator ? Color.Primary : Color.Default)"
+                       Style="border-radius: 9999px; text-transform: none;">
+                @(_showSimulator ? "Hide Rule Simulator" : "Open Rule Simulator")
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showAddRuleModal = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Add Rule
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Rule Simulator Panel (collapsible) -->
+    @if (_showSimulator)
+    {
+        <div class="glass-card p-6 mt-6 simulator-card">
+            <div class="card-section-title">
+                <MudIcon Icon="@Icons.Material.Rounded.Science" Color="Color.Primary" Size="Size.Small" />
+                <span>Interactive Rule Simulator</span>
+            </div>
+            <p class="text-xs text-secondary mt-1">
+                Enter an inbound WhatsApp message and sender number to simulate how the pipeline evaluates rules in real time.
+            </p>
+
+            <div class="sim-form-grid mt-4">
+                <MudTextField @bind-Value="_simPhone"
+                              Label="Simulated Contact Phone"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Placeholder="+15551234567" />
+
+                <MudTextField @bind-Value="_simMessage"
+                              Label="Sample Inbound Message"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Placeholder="e.g. Can I speak to a real human agent right now?" />
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Rounded.PlayCircle"
+                           OnClick="RunSimulationAsync"
+                           Disabled="@_isSimulating"
+                           Style="height: 40px; margin-top: 4px; text-transform: none;">
+                    @(_isSimulating ? "Evaluating..." : "Run Simulator")
+                </MudButton>
+            </div>
+
+            @if (_simResult != null)
+            {
+                <div class="sim-result-container mt-4">
+                    <div class="sim-result-banner @(_simResult.WasBlocked ? "blocked" : "passed")">
+                        <MudIcon Icon="@(_simResult.WasBlocked ? Icons.Material.Rounded.Block : Icons.Material.Rounded.CheckCircle)" />
+                        <div>
+                            <span class="font-semibold">
+                                @(_simResult.WasBlocked ? $"Blocked by rule: {_simResult.FiredRuleName}" : "Message Passed All Guardrails")
+                            </span>
+                            @if (!string.IsNullOrEmpty(_simResult.BlockReason))
+                            {
+                                <p class="text-xs mt-1">@_simResult.BlockReason</p>
+                            }
+                        </div>
+                    </div>
+
+                    @if (_simResult.Steps.Count > 0)
+                    {
+                        <div class="pipeline-steps mt-4">
+                            <span class="text-xs text-muted font-semibold uppercase">Pipeline Execution Steps:</span>
+                            @foreach (var step in _simResult.Steps)
+                            {
+                                <div class="step-row @(step.Fired ? "fired" : "")">
+                                    <span class="step-dot"></span>
+                                    <span class="step-name font-mono text-xs">@step.RuleName</span>
+                                    <span class="step-type text-xs text-muted">(@step.RuleType)</span>
+                                    <span class="step-outcome text-xs font-semibold">@step.Outcome</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <!-- Configured Rules Table -->
+    <div class="glass-card mt-6">
+        @if (_isLoading && _rules == null)
+        {
+            <div class="p-8 text-center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="text-secondary mt-3">Loading pipeline rules...</p>
+            </div>
+        }
+        else if (_rules == null || _rules.Count == 0)
+        {
+            <EmptyState Title="No Pipeline Rules Active"
+                        Description="No rules configured for this tenant. Add business hours, keyword filters, escalation triggers, or rate limits."
+                        Icon="@Icons.Material.Rounded.Rule"
+                        ActionText="Create First Rule"
+                        ActionIcon="@Icons.Material.Rounded.Add"
+                        OnAction="@(() => _showAddRuleModal = true)" />
+        }
+        else
+        {
+            <MudTable Items="@_rules" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Priority</MudTh>
+                    <MudTh>Rule Name</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Scope</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="text-align: right;">Action</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Priority">
+                        <code class="slug-tag">#@context.Priority</code>
+                    </MudTd>
+                    <MudTd DataLabel="Name">
+                        <span class="font-semibold text-primary">@context.Name</span>
+                    </MudTd>
+                    <MudTd DataLabel="Type">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                            @context.RuleType
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Scope">
+                        <span class="text-xs text-secondary">@(context.NumberId == null ? "All Tenant Numbers" : "Single Number")</span>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudSwitch Value="@context.IsEnabled"
+                                   Color="Color.Primary"
+                                   Size="Size.Small" />
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        <MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" />
+                        <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Color="Color.Error" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </div>
+</div>
+
+<!-- Add Rule Modal -->
+<MudDialog @bind-Visible="_showAddRuleModal">
+    <TitleContent><MudText Typo="Typo.h6">Create Pipeline Rule</MudText></TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_newRuleName" Label="Rule Description / Name" Variant="Variant.Outlined" Required="true" />
+            <MudSelect @bind-Value="_newRuleType" Label="Rule Type" Variant="Variant.Outlined">
+                <MudSelectItem Value="@("BusinessHours")">Business Hours & Out-of-Hours Auto Reply</MudSelectItem>
+                <MudSelectItem Value="@("KeywordBlock")">Disallowed Keyword Filter (Profanity / Abuse)</MudSelectItem>
+                <MudSelectItem Value="@("EscalationTrigger")">Human Agent Escalation Keyword Trigger</MudSelectItem>
+                <MudSelectItem Value="@("RateLimit")">Contact Rate Limiter (Spam Prevention)</MudSelectItem>
+                <MudSelectItem Value="@("QuotaCheck")">Monthly Quota Guardrail</MudSelectItem>
+                <MudSelectItem Value="@("OutputGuardrail")">AI Response Length & PII Masking Guardrail</MudSelectItem>
+            </MudSelect>
+            <MudNumericField @bind-Value="_newRulePriority" Label="Evaluation Priority (Lower runs earlier)" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="_newRuleConfig" Label="Rule Configuration (JSON)" Variant="Variant.Outlined" Lines="4" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showAddRuleModal = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateRuleAsync">Save Rule</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<BotRuleDto>? _rules;
+    private bool _isLoading = true;
+
+    // Simulator
+    private bool _showSimulator = false;
+    private string _simPhone = "+15551234567";
+    private string _simMessage = "I demand to talk to a human manager right now";
+    private bool _isSimulating;
+    private RuleSimulationResult? _simResult;
+
+    // Add Rule
+    private bool _showAddRuleModal;
+    private string _newRuleName = "";
+    private string _newRuleType = "KeywordBlock";
+    private int _newRulePriority = 100;
+    private string _newRuleConfig = "{\n  \"blockedKeywords\": [\"refund\", \"lawsuit\"],\n  \"autoReply\": \"Your request requires human manager attention.\"\n}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRulesAsync();
+    }
+
+    private async Task LoadRulesAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _rules = await Api.GetRulesAsync(tenantId);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RunSimulationAsync()
+    {
+        _isSimulating = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _simResult = await Api.SimulateRuleAsync(new SimulateRuleRequest(tenantId, null, _simPhone, _simMessage));
+            if (_simResult == null)
+            {
+                // Fallback simulation demonstration
+                var isEscalate = _simMessage.Contains("human", StringComparison.OrdinalIgnoreCase);
+                _simResult = new RuleSimulationResult(
+                    WasBlocked: isEscalate,
+                    BlockReason: isEscalate ? "Triggered human handoff keyword rule" : null,
+                    FiredRuleName: isEscalate ? "Human Escalation Trigger" : null,
+                    FiredRuleType: isEscalate ? "EscalationTrigger" : null,
+                    ModifiedMessage: _simMessage,
+                    Steps: [
+                        new("BusinessHoursRule", "BusinessHours", false, "Allowed", "Within 09:00 - 18:00 UTC"),
+                        new("RateLimitRule", "RateLimit", false, "Allowed", "1 / 10 allowed messages"),
+                        new("EscalationKeywordRule", "EscalationTrigger", isEscalate, isEscalate ? "Escalated" : "Passed", isEscalate ? "Matched keyword 'human'" : "No triggers matched")
+                    ]);
+            }
+        }
+        finally
+        {
+            _isSimulating = false;
+        }
+    }
+
+    private async Task CreateRuleAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        var created = await Api.CreateRuleAsync(new CreateBotRuleRequest(tenantId, null, _newRuleName, _newRuleType, _newRulePriority, _newRuleConfig));
+        if (created != null)
+        {
+            _showAddRuleModal = false;
+            Snackbar.Add($"Rule '{created.Name}' created", Severity.Success);
+            await LoadRulesAsync();
+        }
+    }
+}
+

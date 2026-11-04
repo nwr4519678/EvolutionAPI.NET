@@ -9,14 +9,20 @@ public sealed record DashboardUsageSnapshot(
     DateTime SampledAtUtc,
     double? ProcessCpuPercent,
     long ProcessWorkingSetBytes,
+    long ProcessPrivateWorkingSetBytes,
+    bool IsPrivateWorkingSetAvailable,
+    long ProcessPrivateBytes,
+    long ManagedHeapBytes,
+    long AvailableMemoryBytes,
     long DatabaseAllocatedBytes,
     IReadOnlyList<ClientUsageSnapshot> Clients);
 
 public sealed record ClientUsageSnapshot(
-    string InstanceId,
     string ClientId,
-    string? WhatsAppNumber,
-    string ConnectionStatus,
+    string ClientName,
+    int InstanceCount,
+    int ConnectedInstances,
     long StoredMessages,
+    long RecentMessages,
     long SessionRecords,
     long EstimatedDatabaseBytes);

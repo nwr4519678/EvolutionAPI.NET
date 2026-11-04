@@ -1,0 +1,38 @@
+<div class="empty-state">
+    <div class="empty-state-icon">
+        <MudIcon Icon="@Icon" Color="Color.Primary" Size="Size.Large" />
+    </div>
+    <div class="empty-state-title">@Title</div>
+    <div class="empty-state-description">@Description</div>
+    @if (!string.IsNullOrEmpty(ActionText))
+    {
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@ActionIcon"
+                   OnClick="HandleAction"
+                   Href="@ActionHref"
+                   Class="mt-4"
+                   Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+            @ActionText
+        </MudButton>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required string Title { get; set; }
+    [Parameter, EditorRequired] public required string Description { get; set; }
+    [Parameter] public string Icon { get; set; } = Icons.Material.Rounded.Inbox;
+    [Parameter] public string? ActionText { get; set; }
+    [Parameter] public string? ActionIcon { get; set; } = Icons.Material.Rounded.Add;
+    [Parameter] public string? ActionHref { get; set; }
+    [Parameter] public EventCallback OnAction { get; set; }
+
+    private async Task HandleAction()
+    {
+        if (OnAction.HasDelegate)
+        {
+            await OnAction.InvokeAsync();
+        }
+    }
+}
+

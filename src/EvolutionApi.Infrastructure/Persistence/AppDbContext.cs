@@ -31,9 +31,28 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ScheduledMessageJob> ScheduledMessages => Set<ScheduledMessageJob>();
     public DbSet<ChatFlowSession> ChatFlowSessions => Set<ChatFlowSession>();
 
+    // ── Platform Management Entities ──────────────────────────────────────────
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<WhatsAppNumber> WhatsAppNumbers => Set<WhatsAppNumber>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
+    public DbSet<AiProvider> AiProviders => Set<AiProvider>();
+    public DbSet<SystemPrompt> SystemPrompts => Set<SystemPrompt>();
+    public DbSet<SystemPromptVersion> SystemPromptVersions => Set<SystemPromptVersion>();
+    public DbSet<BotRule> BotRules => Set<BotRule>();
+    public DbSet<UsageRecord> UsageRecords => Set<UsageRecord>();
+    public DbSet<UsageDailyAggregate> UsageDailyAggregates => Set<UsageDailyAggregate>();
+    public DbSet<PlatformApiKey> PlatformApiKeys => Set<PlatformApiKey>();
+    public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
+    public DbSet<PlatformWebhookDelivery> PlatformWebhookDeliveries => Set<PlatformWebhookDelivery>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.ApplyPlatformConfigurations();
 
         // ── Instance ───────────────────────────────────────────────────────────────
         modelBuilder.Entity<Instance>(b =>

@@ -1,0 +1,284 @@
+@page "/clients"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Client Management</h1>
+            <p class="page-subtitle">Configure multi-tenant clients, plans, and resource allocations</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showCreateDialog = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                New Client
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Search & Filter Bar -->
+    <div class="glass-card p-4 mt-6">
+        <div class="filter-row">
+            <MudTextField @bind-Value="_searchQuery"
+                          Placeholder="Search by client name, slug, or email..."
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Rounded.Search"
+                          Immediate="true"
+                          OnKeyUp="HandleSearch"
+                          Class="search-field" />
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Rounded.Refresh"
+                       OnClick="LoadClientsAsync"
+                       Disabled="@_isLoading"
+                       Style="border-radius: var(--radius-md); text-transform: none;">
+                Refresh
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Data Table / List -->
+    <div class="glass-card mt-6">
+        @if (_isLoading)
+        {
+            <div class="p-8 text-center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="text-secondary mt-3">Loading tenants...</p>
+            </div>
+        }
+        else if (_clients == null || _clients.Items.Count == 0)
+        {
+            <EmptyState Title="No Clients Configured"
+                        Description="No tenant accounts found. Onboard your first client to start allocating WhatsApp numbers and AI bots."
+                        Icon="@Icons.Material.Rounded.Business"
+                        ActionText="Create First Client"
+                        ActionIcon="@Icons.Material.Rounded.Add"
+                        OnAction="@(() => _showCreateDialog = true)" />
+        }
+        else
+        {
+            <MudTable Items="@_clients.Items" Hover="true" Elevation="0" Class="clients-table">
+                <HeaderContent>
+                    <MudTh>Client Name</MudTh>
+                    <MudTh>Identifier / Slug</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Numbers</MudTh>
+                    <MudTh>Conversations</MudTh>
+                    <MudTh>Created</MudTh>
+                    <MudTh Style="text-align: right;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Client Name">
+                        <div class="client-cell">
+                            <MudAvatar Color="Color.Primary" Size="Size.Small">
+                                @context.Name[0].ToString().ToUpper()
+                            </MudAvatar>
+                            <div class="client-cell__info">
+                                <span class="font-semibold text-primary">@context.Name</span>
+                                <span class="text-xs text-muted">@(context.ContactEmail ?? "No email")</span>
+                            </div>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="Slug">
+                        <code class="slug-tag">@context.Slug</code>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <StatusBadge Status="@context.Status" />
+                    </MudTd>
+                    <MudTd DataLabel="Numbers">
+                        <span class="font-semibold">@context.NumberCount</span>
+                    </MudTd>
+                    <MudTd DataLabel="Conversations">
+                        <span>@context.ActiveConversations</span>
+                    </MudTd>
+                    <MudTd DataLabel="Created">
+                        <span class="text-xs text-secondary">@context.CreatedAt.ToString("MMM dd, yyyy")</span>
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        <MudMenu Icon="@Icons.Material.Rounded.MoreVert" Size="Size.Small" Dense="true">
+                            <MudMenuItem Icon="@Icons.Material.Rounded.Visibility"
+                                         OnClick="@(() => ViewClientDetail(context.Id))">
+                                View Details
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.SwitchAccount"
+                                         OnClick="@(() => ImpersonateClient(context))">
+                                Select as Active Client
+                            </MudMenuItem>
+                            <MudDivider />
+                            @if (context.Status == "Active")
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Rounded.PauseCircle"
+                                             OnClick="@(() => SuspendClientAsync(context.Id))">
+                                    Suspend Account
+                                </MudMenuItem>
+                            }
+                            else
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Rounded.PlayCircle"
+                                             OnClick="@(() => ActivateClientAsync(context.Id))">
+                                    Activate Account
+                                </MudMenuItem>
+                            }
+                        </MudMenu>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <!-- Pagination Controls -->
+            <div class="pagination-footer">
+                <span class="text-xs text-muted">
+                    Showing @((_page - 1) * _pageSize + 1) to @(Math.Min(_page * _pageSize, _clients.TotalCount)) of @_clients.TotalCount clients
+                </span>
+                <div class="pagination-btns">
+                    <MudIconButton Icon="@Icons.Material.Rounded.ChevronLeft"
+                                   Disabled="@(!_clients.HasPreviousPage)"
+                                   OnClick="@(() => ChangePage(_page - 1))"
+                                   Size="Size.Small" />
+                    <span class="pagination-page-num">@_page / @_clients.TotalPages</span>
+                    <MudIconButton Icon="@Icons.Material.Rounded.ChevronRight"
+                                   Disabled="@(!_clients.HasNextPage)"
+                                   OnClick="@(() => ChangePage(_page + 1))"
+                                   Size="Size.Small" />
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Create Client Modal Dialog -->
+<MudDialog @bind-Visible="_showCreateDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Onboard New Client</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_newClientName"
+                          Label="Company / Client Name"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          HelperText="Display name of the client organization" />
+
+            <MudTextField @bind-Value="_newClientSlug"
+                          Label="URL Identifier / Slug"
+                          Variant="Variant.Outlined"
+                          Required="true"
+                          HelperText="Unique identifier used in API routes and webhooks (e.g. acme-corp)" />
+
+            <MudTextField @bind-Value="_newClientEmail"
+                          Label="Primary Contact Email"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email" />
+
+            <MudSelect @bind-Value="_newClientPlan"
+                       Label="Subscription Plan"
+                       Variant="Variant.Outlined">
+                <MudSelectItem Value="@("starter")">Starter (1 Number, 10k messages)</MudSelectItem>
+                <MudSelectItem Value="@("pro")">Pro (5 Numbers, 100k messages)</MudSelectItem>
+                <MudSelectItem Value="@("enterprise")">Enterprise (Unlimited Numbers)</MudSelectItem>
+            </MudSelect>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCreateDialog = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="CreateClientAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_newClientName) || string.IsNullOrWhiteSpace(_newClientSlug))">
+            Create Client
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private PagedResult<TenantDto>? _clients;
+    private bool _isLoading = true;
+    private string _searchQuery = "";
+    private int _page = 1;
+    private const int _pageSize = 15;
+
+    // Create dialog
+    private bool _showCreateDialog;
+    private string _newClientName = "";
+    private string _newClientSlug = "";
+    private string? _newClientEmail;
+    private string _newClientPlan = "starter";
+
+    private readonly DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Small, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClientsAsync();
+    }
+
+    private async Task LoadClientsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _clients = await Api.GetTenantsAsync(_page, _pageSize, string.IsNullOrWhiteSpace(_searchQuery) ? null : _searchQuery);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSearch()
+    {
+        _page = 1;
+        await LoadClientsAsync();
+    }
+
+    private async Task ChangePage(int newPage)
+    {
+        _page = newPage;
+        await LoadClientsAsync();
+    }
+
+    private void ImpersonateClient(TenantDto client)
+    {
+        State.SelectTenant(client);
+        Snackbar.Add($"Switched active client context to {client.Name}", Severity.Info);
+    }
+
+    private void ViewClientDetail(string id)
+    {
+        Nav.NavigateTo($"/clients/{id}");
+    }
+
+    private async Task SuspendClientAsync(string id)
+    {
+        await Api.SuspendTenantAsync(id);
+        Snackbar.Add("Client suspended", Severity.Warning);
+        await LoadClientsAsync();
+    }
+
+    private async Task ActivateClientAsync(string id)
+    {
+        await Api.ActivateTenantAsync(id);
+        Snackbar.Add("Client activated", Severity.Success);
+        await LoadClientsAsync();
+    }
+
+    private async Task CreateClientAsync()
+    {
+        var result = await Api.CreateTenantAsync(new CreateTenantRequest(_newClientName, _newClientSlug, _newClientEmail, _newClientPlan));
+        if (result != null)
+        {
+            Snackbar.Add($"Client {result.Name} created successfully", Severity.Success);
+            _showCreateDialog = false;
+            _newClientName = "";
+            _newClientSlug = "";
+            _newClientEmail = null;
+            await LoadClientsAsync();
+        }
+    }
+}
+

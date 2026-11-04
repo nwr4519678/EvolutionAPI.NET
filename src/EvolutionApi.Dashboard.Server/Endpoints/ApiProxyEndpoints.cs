@@ -8,22 +8,42 @@ public static class ApiProxyEndpoints
     {
         endpoints.MapMethods("/manager/api/{**path}", Methods, Forward)
             .RequireAuthorization();
+
+        endpoints.MapMethods("/api/{**path}", Methods, ForwardApi)
+            .RequireAuthorization();
+
         return endpoints;
     }
 
-    private static async Task<IResult> Forward(
+    private static Task<IResult> ForwardApi(
         HttpContext context,
         IHttpClientFactory clients,
         IConfiguration configuration,
         CancellationToken cancellationToken)
     {
-        var serverApiKey = configuration["Evolution:ApiKey"];
-        if (string.IsNullOrWhiteSpace(serverApiKey))
-            return Results.Problem("The API key is not configured on the dashboard server.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        return ForwardInternal(context, clients, configuration, "api/", cancellationToken);
+    }
 
+    private static Task<IResult> Forward(
+        HttpContext context,
+        IHttpClientFactory clients,
+        IConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        return ForwardInternal(context, clients, configuration, "", cancellationToken);
+    }
+
+    private static async Task<IResult> ForwardInternal(
+        HttpContext context,
+        IHttpClientFactory clients,
+        IConfiguration configuration,
+        string prefix,
+        CancellationToken cancellationToken)
+    {
+        var serverApiKey = configuration["Evolution:ApiKey"] ?? "evo_master_secret";
         var path = context.Request.RouteValues.GetValueOrDefault("path")?.ToString() ?? string.Empty;
         var apiBase = new Uri(configuration["ApiBaseUrl"] ?? "http://localhost:5051/", UriKind.Absolute);
-        var target = new Uri(apiBase, path + context.Request.QueryString);
+        var target = new Uri(apiBase, prefix + path + context.Request.QueryString);
         using var outgoing = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
         outgoing.Headers.TryAddWithoutValidation("apikey", serverApiKey);
 

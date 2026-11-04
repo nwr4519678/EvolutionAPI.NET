@@ -1,0 +1,232 @@
+@page "/webhooks"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<div class="page-container">
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Outgoing Webhooks & Events</h1>
+            <p class="page-subtitle">Stream WhatsApp and bot events directly to your HTTP endpoints with HMAC signing</p>
+        </div>
+        <div>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       OnClick="@(() => _showCreateModal = true)"
+                       Style="border-radius: 9999px; text-transform: none; font-weight: 600;">
+                Add Webhook Endpoint
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- Webhook Endpoints Table -->
+    <div class="glass-card mt-6">
+        @if (_isLoading && _endpoints == null)
+        {
+            <div class="p-8 text-center">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                <p class="text-secondary mt-3">Loading endpoints...</p>
+            </div>
+        }
+        else if (_endpoints == null || _endpoints.Count == 0)
+        {
+            <EmptyState Title="No Webhook Endpoints Configured"
+                        Description="Deliver real-time events to your CRM or custom servers whenever WhatsApp messages arrive."
+                        Icon="@Icons.Material.Rounded.Webhook"
+                        ActionText="Register Endpoint"
+                        ActionIcon="@Icons.Material.Rounded.Add"
+                        OnAction="@(() => _showCreateModal = true)" />
+        }
+        else
+        {
+            <MudTable Items="@_endpoints" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Target URL</MudTh>
+                    <MudTh>Subscribed Events</MudTh>
+                    <MudTh>Max Retries</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="text-align: right;">Action</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <span class="font-semibold text-primary">@context.Name</span>
+                    </MudTd>
+                    <MudTd DataLabel="URL">
+                        <code class="slug-tag">@context.Url</code>
+                    </MudTd>
+                    <MudTd DataLabel="Events">
+                        @foreach (var evt in context.Events)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="mr-1">@evt</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Retries">
+                        <span>@context.MaxRetries attempts</span>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <StatusBadge Status="@(context.IsActive ? "Active" : "Suspended")" />
+                    </MudTd>
+                    <MudTd Style="text-align: right;">
+                        <MudButton Variant="Variant.Outlined"
+                                   Size="Size.Small"
+                                   OnClick="@(() => ViewDeliveries(context))">
+                            Delivery Logs
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </div>
+
+    <!-- Delivery Logs View (when selected) -->
+    @if (_selectedEndpoint != null)
+    {
+        <div class="glass-card p-6 mt-6">
+            <div class="delivery-logs-header">
+                <div>
+                    <h3 class="inbox-title">Deliveries: @_selectedEndpoint.Name</h3>
+                    <p class="text-xs text-secondary mt-1">Audit log of event dispatch attempts, status codes, and replay triggers</p>
+                </div>
+                <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" OnClick="@(() => _selectedEndpoint = null)" />
+            </div>
+
+            @if (_deliveries == null || _deliveries.Items.Count == 0)
+            {
+                <div class="p-8 text-center">
+                    <MudText Typo="Typo.caption" Class="text-muted">No webhook deliveries recorded yet</MudText>
+                </div>
+            }
+            else
+            {
+                <MudTable Items="@_deliveries.Items" Hover="true" Elevation="0" Class="mt-4">
+                    <HeaderContent>
+                        <MudTh>Event</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Attempt</MudTh>
+                        <MudTh>Sent At</MudTh>
+                        <MudTh Style="text-align: right;">Replay</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd><code class="slug-tag">@context.EventType</code></MudTd>
+                        <MudTd>
+                            <span class="font-mono text-xs @(context.IsSuccess ? "text-brand" : "text-rose")">
+                                @(context.HttpStatusCode?.ToString() ?? "Connection Error")
+                            </span>
+                        </MudTd>
+                        <MudTd>@context.AttemptCount</MudTd>
+                        <MudTd><span class="text-xs text-muted">@context.CreatedAt.ToString("g")</span></MudTd>
+                        <MudTd Style="text-align: right;">
+                            <MudButton Variant="Variant.Outlined"
+                                       Size="Size.Small"
+                                       StartIcon="@Icons.Material.Rounded.Replay"
+                                       OnClick="@(() => ReplayAsync(context.Id))">
+                                Replay
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </div>
+    }
+</div>
+
+<!-- Add Webhook Modal -->
+<MudDialog @bind-Visible="_showCreateModal">
+    <TitleContent><MudText Typo="Typo.h6">Register Webhook Endpoint</MudText></TitleContent>
+    <DialogContent>
+        <div class="dialog-form">
+            <MudTextField @bind-Value="_newName" Label="Endpoint Name" Variant="Variant.Outlined" Required="true" />
+            <MudTextField @bind-Value="_newUrl" Label="Target HTTPS URL" Variant="Variant.Outlined" Required="true"
+                          HelperText="Must begin with https://" />
+            <MudTextField @bind-Value="_newSecret" Label="HMAC Signing Secret" Variant="Variant.Outlined"
+                          InputType="InputType.Password"
+                          HelperText="Used to generate X-Hub-Signature-256 HMAC digest header" />
+
+            <MudText Typo="Typo.caption" Class="text-muted font-semibold mt-2">SUBSCRIBED EVENTS:</MudText>
+            <MudCheckBox @bind-Value="_eventMessageReceived" Label="message.received" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="_eventMessageSent" Label="message.sent" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="_eventSessionChanged" Label="session.status_changed" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="_eventQuotaReached" Label="quota.reached" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="_eventHandoff" Label="handoff.requested" Color="Color.Primary" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showCreateModal = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateEndpointAsync">Register Endpoint</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<WebhookEndpointDto>? _endpoints;
+    private WebhookEndpointDto? _selectedEndpoint;
+    private PagedResult<WebhookDeliveryDto>? _deliveries;
+    private bool _isLoading = true;
+
+    // Modal
+    private bool _showCreateModal;
+    private string _newName = "";
+    private string _newUrl = "https://";
+    private string _newSecret = "";
+    private bool _eventMessageReceived = true;
+    private bool _eventMessageSent = true;
+    private bool _eventSessionChanged = true;
+    private bool _eventQuotaReached = true;
+    private bool _eventHandoff = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEndpointsAsync();
+    }
+
+    private async Task LoadEndpointsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+            _endpoints = await Api.GetWebhookEndpointsAsync(tenantId);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ViewDeliveries(WebhookEndpointDto endpoint)
+    {
+        _selectedEndpoint = endpoint;
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        _deliveries = await Api.GetWebhookDeliveriesAsync(tenantId, endpoint.Id, 1);
+    }
+
+    private async Task ReplayAsync(string deliveryId)
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        await Api.ReplayDeliveryAsync(tenantId, deliveryId);
+        Snackbar.Add("Webhook delivery reenqueued with exponential backoff", Severity.Success);
+    }
+
+    private async Task CreateEndpointAsync()
+    {
+        var tenantId = State.SelectedTenant?.Id ?? "default-tenant";
+        var events = new List<string>();
+        if (_eventMessageReceived) events.Add("message.received");
+        if (_eventMessageSent) events.Add("message.sent");
+        if (_eventSessionChanged) events.Add("session.status_changed");
+        if (_eventQuotaReached) events.Add("quota.reached");
+        if (_eventHandoff) events.Add("handoff.requested");
+
+        var created = await Api.CreateWebhookAsync(new CreateWebhookRequest(tenantId, _newName, _newUrl, events.ToArray(), _newSecret));
+        if (created != null)
+        {
+            _showCreateModal = false;
+            Snackbar.Add($"Webhook endpoint '{created.Name}' created", Severity.Success);
+            await LoadEndpointsAsync();
+        }
+    }
+}
+

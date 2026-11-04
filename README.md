@@ -167,6 +167,19 @@ dotnet run --project src/EvolutionApi.API
 dotnet run --project src/EvolutionApi.Dashboard.Server
 ```
 
+The API also creates the configured database and applies pending EF migrations at
+startup, before initializing Hangfire storage or starting background workers. The
+SQL login must have permission to create the database (when missing) and update
+its schema. Hangfire then creates its own tables in the same database.
+
+After changing the EF model, generate a migration before updating the database:
+
+```powershell
+dotnet ef migrations add <MigrationName> `
+  --project src/EvolutionApi.Infrastructure `
+  --startup-project src/EvolutionApi.API
+```
+
 Development endpoints:
 
 | Endpoint | URL |

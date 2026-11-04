@@ -1,0 +1,186 @@
+@page "/resources"
+@using EvolutionApi.Dashboard.Services
+@implements IAsyncDisposable
+@inject ApiClient Api
+
+<div class="resource-page">
+    <div class="page-header resource-page__header">
+        <div>
+            <h1 class="page-title">Resource usage</h1>
+            <p class="page-subtitle">Live CPU and RAM for the EvolutionApi.API backend process only. Dashboard hosting and browser WASM are excluded.</p>
+        </div>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Rounded.Refresh" OnClick="RefreshAsync" Disabled="@_loading">
+            Refresh
+        </MudButton>
+    </div>
+
+    @if (_usage is null && _loading)
+    {
+        <div class="glass-card resource-page__loading"><MudProgressCircular Indeterminate="true" Color="Color.Primary" /><span>Reading process resources…</span></div>
+    }
+    else if (_usage is null)
+    {
+        <div class="glass-card resource-page__loading">Resource usage could not be loaded. Check the API connection and refresh.</div>
+    }
+    else
+    {
+        <div class="resource-page__cards">
+            <section class="glass-card resource-stat">
+                <div class="resource-stat__top"><span>API CPU</span><MudIcon Icon="@Icons.Material.Rounded.Memory" /></div>
+                <strong>@Percent(_usage.ProcessCpuPercent)</strong>
+                <MudProgressLinear Value="@(_usage.ProcessCpuPercent ?? 0)" Max="100" Color="Color.Primary" Rounded="true" />
+                <small>Share of available processor capacity</small>
+            </section>
+            <section class="glass-card resource-stat">
+                <div class="resource-stat__top"><span>@ApiMemoryLabel</span><MudIcon Icon="@Icons.Material.Rounded.Storage" /></div>
+                <strong>@Bytes(DisplayMemoryBytes)</strong>
+                <MudProgressLinear Value="@MemoryPercent" Max="100" Color="Color.Secondary" Rounded="true" />
+                <small>@MemoryPercent.ToString("F2")% of @Bytes(_usage.AvailableMemoryBytes) available to the process</small>
+                <small>Private memory: @Bytes(_usage.ProcessPrivateBytes) · .NET heap: @Bytes(_usage.ManagedHeapBytes)</small>
+            </section>
+            <section class="glass-card resource-stat">
+                <div class="resource-stat__top"><span>Database allocation</span><MudIcon Icon="@Icons.Material.Rounded.Storage" /></div>
+                <strong>@Bytes(_usage.DatabaseAllocatedBytes)</strong>
+                <small>Allocated database file size</small>
+            </section>
+        </div>
+
+        <section class="glass-card resource-clients">
+            <div class="resource-clients__heading">
+                <div><h2>Client resource estimates</h2><p>Client CPU is apportioned by messages in the last 24 hours. Client RAM is apportioned by estimated stored data size.</p></div>
+                <span class="resource-live"><i></i> Updates every 5 seconds</span>
+            </div>
+            @if (ClientRows.Count == 0)
+            {
+                <div class="resource-empty">No clients or WhatsApp instances have been recorded yet.</div>
+            }
+            else
+            {
+                <div class="resource-table-wrap">
+                    <table class="resource-table">
+                        <thead><tr><th>Client</th><th>Instances</th><th>CPU share estimate</th><th>RAM share estimate</th><th>Stored data</th><th>Messages (24h)</th></tr></thead>
+                        <tbody>
+                            @foreach (var row in ClientRows)
+                            {
+                                <tr>
+                                    <td><strong>@row.Name</strong></td>
+                                    <td>@row.Connected / @row.Instances connected</td>
+                                    <td><strong>@row.Cpu.ToString("F2")%</strong><div class="resource-share-track"><span style="width:@(Math.Clamp(row.Cpu / Math.Max(_usage.ProcessCpuPercent ?? 0, 1) * 100, 0, 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"></span></div></td>
+                                    <td><strong>@Bytes(row.Ram)</strong><div class="resource-share-track resource-share-track--memory"><span style="width:@(Math.Clamp(row.Ram / Math.Max(_usage.ProcessWorkingSetBytes, 1d) * 100, 0, 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"></span></div></td>
+                                    <td>@Bytes(row.Database)</td>
+                                    <td>@row.RecentMessages.ToString("N0")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            <div class="resource-footnote">The primary RAM value is the API process's private working set (resident pages unique to this process); if Windows private working-set metrics are unavailable, total working set is shown instead. Total working set includes shared runtime pages. Private committed memory and .NET heap are provided as details. CPU and memory are measured for the EvolutionApi.API process only. Per-client shares are estimates for comparison and do not represent isolated client processes. Database footprint is estimated from stored records; database allocation includes unused file space.</div>
+        </section>
+        <p class="resource-sampled">Last sampled @SampleTime(_usage.SampledAtUtc)</p>
+    }
+</div>
+
+@code {
+    private DashboardUsageDto? _usage;
+    private IReadOnlyList<TenantDto> _tenants = [];
+    private bool _loading = true;
+    private CancellationTokenSource? _pollCancellation;
+
+    private long DisplayMemoryBytes => _usage is null ? 0 : _usage.IsPrivateWorkingSetAvailable
+        ? _usage.ProcessPrivateWorkingSetBytes
+        : _usage.ProcessWorkingSetBytes;
+    private string ApiMemoryLabel => _usage?.IsPrivateWorkingSetAvailable == true ? "API private RAM" : "API RAM (working set)";
+    private double MemoryPercent => _usage is { AvailableMemoryBytes: > 0 }
+        ? Math.Clamp(DisplayMemoryBytes * 100d / _usage.AvailableMemoryBytes, 0, 100)
+        : 0;
+
+    private IReadOnlyList<ClientRow> ClientRows
+    {
+        get
+        {
+            if (_usage is null) return [];
+            var usageByClient = _usage.Clients.ToDictionary(x => x.ClientId, StringComparer.OrdinalIgnoreCase);
+            var rows = _tenants.Select(tenant =>
+            {
+                usageByClient.TryGetValue(tenant.Id, out var usage);
+                return new ClientRow(tenant.Id, tenant.Name, usage?.InstanceCount ?? 0, usage?.ConnectedInstances ?? 0,
+                    usage?.RecentMessages ?? 0, usage?.EstimatedDatabaseBytes ?? 0);
+            }).ToList();
+
+            foreach (var usage in _usage.Clients.Where(x => rows.All(r => !string.Equals(r.Id, x.ClientId, StringComparison.OrdinalIgnoreCase))))
+                rows.Add(new ClientRow(usage.ClientId, usage.ClientName, usage.InstanceCount, usage.ConnectedInstances,
+                    usage.RecentMessages, usage.EstimatedDatabaseBytes));
+
+            var totalActivity = rows.Sum(x => x.RecentMessages);
+            var totalStoredBytes = rows.Sum(x => x.Database);
+            var cpu = _usage.ProcessCpuPercent ?? 0;
+            return rows.OrderByDescending(x => x.RecentMessages).ThenBy(x => x.Name)
+                .Select(x => x with
+                {
+                    Cpu = totalActivity == 0 ? 0 : cpu * x.RecentMessages / totalActivity,
+                    Ram = totalStoredBytes == 0 ? 0 : (long)(DisplayMemoryBytes * (double)x.Database / totalStoredBytes)
+                }).ToArray();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync(true);
+        _pollCancellation = new CancellationTokenSource();
+        _ = PollAsync(_pollCancellation.Token);
+    }
+
+    private Task RefreshAsync() => LoadAsync(false);
+
+    private async Task LoadAsync(bool loadTenants)
+    {
+        _loading = true;
+        try
+        {
+            var usageTask = Api.GetDashboardUsageAsync();
+            var tenantsTask = loadTenants ? Api.GetTenantsAsync(1, 1000) : Task.FromResult<PagedResult<TenantDto>?>(null);
+            await Task.WhenAll(usageTask, tenantsTask);
+            _usage = await usageTask;
+            if (loadTenants) _tenants = (await tenantsTask)?.Items ?? [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                _usage = await Api.GetDashboardUsageAsync(cancellationToken);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private static string Percent(double? value) => value is null ? "Sampling…" : $"{value:F1}%";
+    private static string Bytes(long value) => value >= 1024L * 1024 * 1024
+        ? $"{value / (1024d * 1024 * 1024):F2} GB"
+        : $"{value / (1024d * 1024):F1} MB";
+    private static string SampleTime(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc).ToLocalTime().ToString("MMM d, HH:mm:ss");
+    private sealed record ClientRow(string Id, string Name, int Instances, int Connected, long RecentMessages, long Database)
+    {
+        public double Cpu { get; init; }
+        public long Ram { get; init; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pollCancellation is not null)
+        {
+            await _pollCancellation.CancelAsync();
+            _pollCancellation.Dispose();
+        }
+    }
+}

@@ -10,7 +10,8 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddMudServices();
-builder.Services.AddScoped<DashboardState>();
-builder.Services.AddScoped<EvolutionApiClient>();
+builder.Services.AddScoped<AppState>();
+builder.Services.AddScoped<ApiClient>();
+builder.Services.AddScoped<RealtimeService>();
 
 await builder.Build().RunAsync();

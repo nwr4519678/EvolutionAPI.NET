@@ -1,0 +1,220 @@
+@using EvolutionApi.Dashboard.Services
+@inject AppState AppState
+@inject ApiClient Api
+@inject NavigationManager Nav
+@implements IDisposable
+
+<header class="topbar @(AppState.SidebarCollapsed ? "topbar--collapsed" : "")" role="banner">
+    <div class="topbar__left">
+        <button class="topbar__menu-btn" type="button" @onclick="AppState.ToggleMobileNavigation"
+                aria-label="Open navigation" aria-controls="main-navigation" aria-expanded="@(AppState.MobileNavigationOpen ? "true" : "false")">
+            <MudIcon Icon="@Icons.Material.Rounded.Menu" Size="Size.Small" />
+        </button>
+        <!-- Breadcrumb / Route Title -->
+        <div class="topbar__breadcrumbs">
+            <span class="topbar__page-title">@GetPageTitle()</span>
+        </div>
+
+        <!-- Live Status Pill -->
+        <div class="live-indicator" title="Connected to Real-time SignalR Event Bus">
+            <span class="live-dot"></span>
+            <span>LIVE</span>
+        </div>
+    </div>
+
+    <div class="topbar__right">
+        <!-- Quick Search / Command Palette shortcut -->
+        <button class="topbar__search-trigger" @onclick="OpenCommandPalette" title="Search platform (Ctrl+K)">
+            <MudIcon Icon="@Icons.Material.Rounded.Search" Size="Size.Small" />
+            <span class="search-trigger__text">Search numbers, contacts...</span>
+            <kbd class="search-trigger__kbd">⌘K</kbd>
+        </button>
+
+        <!-- Client Switcher (for SuperAdmin) -->
+        @if (AppState.IsSuperAdmin)
+        {
+            <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               StartIcon="@Icons.Material.Rounded.Business"
+                               EndIcon="@Icons.Material.Rounded.ArrowDropDown"
+                               Class="topbar__tenant-btn">
+                        @(AppState.SelectedTenant?.Name ?? "All Clients")
+                    </MudButton>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem OnClick="@(() => SelectTenant(null))">
+                        <MudText Typo="Typo.body2">All Clients (Platform)</MudText>
+                    </MudMenuItem>
+                    <MudDivider />
+                    @if (_tenants != null)
+                    {
+                        @foreach (var tenant in _tenants)
+                        {
+                            <MudMenuItem OnClick="@(() => SelectTenant(tenant))">
+                                <MudText Typo="Typo.body2">@tenant.Name</MudText>
+                            </MudMenuItem>
+                        }
+                    }
+                </ChildContent>
+            </MudMenu>
+        }
+
+        <!-- Theme Toggle Button -->
+        <button class="topbar__icon-btn" @onclick="AppState.ToggleTheme"
+                title="@(AppState.IsDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode")">
+            <MudIcon Icon="@(AppState.IsDarkMode ? Icons.Material.Rounded.LightMode : Icons.Material.Rounded.DarkMode)"
+                     Size="Size.Small" />
+        </button>
+
+        <!-- Notifications -->
+        <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+            <ActivatorContent>
+                <button class="topbar__icon-btn" title="Notifications">
+                    <MudBadge Content="@AppState.UnreadNotificationCount" Color="Color.Error" Overlap="true"
+                              Visible="@(AppState.UnreadNotificationCount > 0)">
+                        <MudIcon Icon="@Icons.Material.Rounded.Notifications" Size="Size.Small" />
+                    </MudBadge>
+                </button>
+            </ActivatorContent>
+            <ChildContent>
+                <div class="notifications-header">
+                    <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">Notifications</MudText>
+                </div>
+                <MudDivider />
+                @if (_notifications != null && _notifications.Count > 0)
+                {
+                    @foreach (var n in _notifications.Take(5))
+                    {
+                        <MudMenuItem OnClick="@(() => MarkAsRead(n.Id))">
+                            <div class="notification-item">
+                                <MudText Typo="Typo.body2" Style="font-weight: 600;">@n.Title</MudText>
+                                <MudText Typo="Typo.caption" Class="text-secondary">@n.Body</MudText>
+                            </div>
+                        </MudMenuItem>
+                    }
+                }
+                else
+                {
+                    <div class="notifications-empty">
+                        <MudText Typo="Typo.caption" Class="text-muted">No unread notifications</MudText>
+                    </div>
+                }
+            </ChildContent>
+        </MudMenu>
+
+        <!-- User Menu -->
+        <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+            <ActivatorContent>
+                <button class="topbar__user-btn">
+                    <MudAvatar Size="Size.Small" Color="Color.Primary">
+                        @(AppState.CurrentUserEmail?[0].ToString().ToUpper() ?? "U")
+                    </MudAvatar>
+                </button>
+            </ActivatorContent>
+            <ChildContent>
+                <div class="user-menu-header">
+                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@AppState.CurrentUserEmail</MudText>
+                    <MudText Typo="Typo.caption" Class="text-secondary">@AppState.CurrentUserRole</MudText>
+                </div>
+                <MudDivider />
+                <MudMenuItem Icon="@Icons.Material.Rounded.Tune" OnClick="@(() => Nav.NavigateTo("/settings"))">
+                    Settings
+                </MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Rounded.Logout" OnClick="LogoutAsync">
+                    Sign Out
+                </MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+    </div>
+</header>
+
+@if (_showCommandPalette)
+{
+    <CommandPalette OnClose="@(() => _showCommandPalette = false)" />
+}
+
+@code {
+    private bool _showCommandPalette;
+    private IReadOnlyList<TenantDto>? _tenants;
+    private IReadOnlyList<NotificationDto>? _notifications;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += OnStateChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        await LoadHeaderDataAsync();
+    }
+
+    private async Task LoadHeaderDataAsync()
+    {
+        if (AppState.IsSuperAdmin)
+        {
+            var result = await Api.GetTenantsAsync(1, 100);
+            _tenants = result?.Items;
+        }
+
+        _notifications = await Api.GetNotificationsAsync();
+        if (_notifications != null)
+        {
+            AppState.SetUnreadNotifications(_notifications.Count(n => !n.IsRead));
+        }
+    }
+
+    private void SelectTenant(TenantDto? tenant)
+    {
+        AppState.SelectTenant(tenant);
+    }
+
+    private async Task MarkAsRead(string id)
+    {
+        await Api.MarkNotificationReadAsync(id);
+        await LoadHeaderDataAsync();
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Api.LogoutAsync();
+        AppState.SetUnauthenticated();
+        Nav.NavigateTo("/login", true);
+    }
+
+    private void OpenCommandPalette() => _showCommandPalette = true;
+
+    private string GetPageTitle()
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri).ToLowerInvariant();
+        relative = relative.Split('?', '#')[0].Trim('/');
+        if (string.IsNullOrEmpty(relative) || relative == "/") return "Platform Overview";
+        if (relative.StartsWith("numbers/")) return "Number Details";
+        if (relative == "numbers") return "WhatsApp Numbers";
+        if (relative.StartsWith("inbox")) return "Live Inbox";
+        if (relative.StartsWith("prompts")) return "System Prompts";
+        if (relative.StartsWith("rules")) return "Rules Engine";
+        if (relative.StartsWith("knowledge")) return "Knowledge Base";
+        if (relative.StartsWith("usage")) return "Usage & Billing";
+        if (relative.StartsWith("api-keys")) return "API Keys & Integrations";
+        if (relative.StartsWith("webhooks")) return "Webhooks";
+        if (relative.StartsWith("clients/")) return "Client Details";
+        if (relative == "clients") return "Client Management";
+        if (relative.StartsWith("ai-providers")) return "AI Providers";
+        if (relative.StartsWith("team")) return "Team & Roles";
+        if (relative.StartsWith("audit-log")) return "Audit Log";
+        if (relative.StartsWith("resources")) return "Resource Usage";
+        if (relative.StartsWith("settings")) return "Settings";
+        if (relative.StartsWith("login")) return "Sign In";
+        if (relative is "404" or "notfound") return "Page Not Found";
+        return "Control Panel";
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args) =>
+        _ = InvokeAsync(StateHasChanged);
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose()
+    {
+        AppState.OnChange -= OnStateChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}
+

@@ -1,0 +1,5 @@
+.nav-group { margin-bottom: 10px; }
+.nav-group--mini { margin-bottom: 8px; }
+.nav-group--mini + .nav-group--mini { padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+.nav-group__label { padding: 9px 10px 7px; font-size: 9px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: .13em; white-space: nowrap; }
+.nav-group__items { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }

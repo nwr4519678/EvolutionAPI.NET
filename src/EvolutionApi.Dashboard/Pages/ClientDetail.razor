@@ -1,0 +1,192 @@
+@page "/clients/{Id}"
+@using EvolutionApi.Dashboard.Services
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<div class="page-container">
+    @if (_isLoading && _client == null)
+    {
+        <div class="p-8 text-center">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            <p class="text-secondary mt-3">Loading client profile...</p>
+        </div>
+    }
+    else if (_client == null)
+    {
+        <EmptyState Title="Client Not Found"
+                    Description="The requested client tenant could not be found or has been removed."
+                    Icon="@Icons.Material.Rounded.ErrorOutline"
+                    ActionText="Back to Clients"
+                    ActionIcon="@Icons.Material.Rounded.ArrowBack"
+                    ActionHref="/clients" />
+    }
+    else
+    {
+        <!-- Header -->
+        <div class="client-header-card glass-card p-6">
+            <div class="client-header-top">
+                <div class="client-profile">
+                    <MudAvatar Color="Color.Primary" Size="Size.Large">
+                        @_client.Name[0].ToString().ToUpper()
+                    </MudAvatar>
+                    <div>
+                        <div class="client-title-row">
+                            <h1 class="page-title">@_client.Name</h1>
+                            <StatusBadge Status="@_client.Status" />
+                        </div>
+                        <div class="client-meta-row">
+                            <span class="text-xs text-muted">Slug: <code class="slug-tag">@_client.Slug</code></span>
+                            <span class="text-xs text-muted">Email: @(_client.ContactEmail ?? "None")</span>
+                            <span class="text-xs text-muted">Timezone: @_client.Timezone</span>
+                            <span class="text-xs text-muted">Plan: @(_client.PlanId ?? "Starter")</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="client-actions">
+                    <MudButton Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Rounded.ArrowBack"
+                               OnClick="@(() => Nav.NavigateTo("/clients"))"
+                               Style="border-radius: var(--radius-md); text-transform: none;">
+                        Back
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Rounded.Add"
+                               OnClick="@(() => Nav.NavigateTo($"/numbers?tenantId={_client.Id}&action=add"))"
+                               Style="border-radius: var(--radius-md); text-transform: none; font-weight: 600;">
+                        Assign Number
+                    </MudButton>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabbed Settings Section -->
+        <div class="glass-card mt-6">
+            <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="p-6">
+                <!-- Numbers Tab -->
+                <MudTabPanel Text="WhatsApp Numbers" Icon="@Icons.Material.Rounded.PhoneAndroid">
+                    @if (_numbers == null || _numbers.Items.Count == 0)
+                    {
+                        <EmptyState Title="No Numbers Linked"
+                                    Description="This client does not have any active WhatsApp numbers yet."
+                                    Icon="@Icons.Material.Rounded.PhoneDisabled"
+                                    ActionText="Add Number"
+                                    ActionIcon="@Icons.Material.Rounded.Add"
+                                    OnAction="@(() => Nav.NavigateTo($"/numbers?tenantId={_client.Id}&action=add"))" />
+                    }
+                    else
+                    {
+                        <MudTable Items="@_numbers.Items" Hover="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Display Name</MudTh>
+                                <MudTh>Phone Number</MudTh>
+                                <MudTh>Method</MudTh>
+                                <MudTh>Status</MudTh>
+                                <MudTh>Bot State</MudTh>
+                                <MudTh Style="text-align: right;">Action</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Display Name">
+                                    <span class="font-semibold">@context.DisplayName</span>
+                                </MudTd>
+                                <MudTd DataLabel="Phone Number">
+                                    <span>@(context.PhoneNumber ?? "Not linked")</span>
+                                </MudTd>
+                                <MudTd DataLabel="Method">
+                                    <span class="text-xs">@context.ConnectionMethod</span>
+                                </MudTd>
+                                <MudTd DataLabel="Status">
+                                    <StatusBadge Status="@context.Status" />
+                                </MudTd>
+                                <MudTd DataLabel="Bot State">
+                                    <MudChip T="string" Color="@(context.BotEnabled ? Color.Success : Color.Default)" Size="Size.Small">
+                                        @(context.BotEnabled ? "Active" : "Disabled")
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd Style="text-align: right;">
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                               OnClick="@(() => Nav.NavigateTo($"/numbers/{context.Id}"))">
+                                        Configure
+                                    </MudButton>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudTabPanel>
+
+                <!-- System Prompts Tab -->
+                <MudTabPanel Text="AI Prompts" Icon="@Icons.Material.Rounded.EditNote">
+                    <div class="tab-panel-header">
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">System Prompts</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => Nav.NavigateTo($"/prompts?tenantId={_client.Id}"))">
+                            Open Prompt Studio
+                        </MudButton>
+                    </div>
+                    <MudText Typo="Typo.body2" Class="text-secondary mt-2">
+                        Customize system personas, dynamic placeholders, and RAG knowledge blocks for this client.
+                    </MudText>
+                </MudTabPanel>
+
+                <!-- Rules Tab -->
+                <MudTabPanel Text="Bot Rules" Icon="@Icons.Material.Rounded.Rule">
+                    <div class="tab-panel-header">
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Enforced Rules</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => Nav.NavigateTo($"/rules?tenantId={_client.Id}"))">
+                            Configure Rules
+                        </MudButton>
+                    </div>
+                    <MudText Typo="Typo.body2" Class="text-secondary mt-2">
+                        Business hours, keyword blocks, phone blacklists, and rate limits configured for this client.
+                    </MudText>
+                </MudTabPanel>
+
+                <!-- Usage Tab -->
+                <MudTabPanel Text="Usage & Quota" Icon="@Icons.Material.Rounded.BarChart">
+                    <div class="tab-panel-header">
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Consumption Telemetry</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => Nav.NavigateTo($"/usage?tenantId={_client.Id}"))">
+                            View Usage Details
+                        </MudButton>
+                    </div>
+                    <MudText Typo="Typo.body2" Class="text-secondary mt-2">
+                        Daily message volumes, AI token consumption, and cost calculations for this client.
+                    </MudText>
+                </MudTabPanel>
+            </MudTabs>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private TenantDto? _client;
+    private PagedResult<WhatsAppNumberDto>? _numbers;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClientDataAsync();
+    }
+
+    private async Task LoadClientDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _client = await Api.GetTenantAsync(Id);
+            if (_client != null)
+            {
+                _numbers = await Api.GetNumbersAsync(_client.Id, 1, 50);
+            }
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

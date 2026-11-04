@@ -37,12 +37,7 @@ public static class GatewayApplicationExtensions
         app.MapWhatsAppWebSockets();
         app.MapHub<InstanceHub>("/hubs/instance");
         app.MapHub<EventHub>("/hubs/events");
-        app.MapGet("/health", () => Results.Ok(new
-        {
-            status = "healthy",
-            service = "EvolutionApi.Gateway",
-            timestamp = DateTime.UtcNow
-        })).AllowAnonymous();
+        app.MapHub<DashboardHub>("/hubs/dashboard");
         app.MapControllers().RequireRateLimiting("api");
 
         return app;
